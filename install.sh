@@ -2,35 +2,21 @@
 set -euo pipefail
 
 TARGET="$HOME/sysmon.py"
-ALIAS_LINE='alias sysmon="python3 ~/sysmon.py"'
+LINK="/usr/local/bin/sysmon"
 
-echo "[1/6] Определение ОС..."
-if [ -f /etc/os-release ]; then
-  . /etc/os-release
-  OS=$ID
-else
-  OS="unknown"
+echo "[1/5] Проверка Python3..."
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "Устанавливаю python3..."
+  sudo apt update && sudo apt install -y python3
 fi
-echo "Обнаружена ОС: $OS"
 
-echo "[2/6] Установка Python3 и pip..."
-case "$OS" in
-  ubuntu|debian)
-    sudo apt update
-    sudo apt install -y python3 python3-pip
-    ;;
-  centos|rhel|fedora)
-    sudo yum install -y python3 python3-pip || sudo dnf install -y python3 python3-pip
-    ;;
-  arch)
-    sudo pacman -Sy --noconfirm python python-pip
-    ;;
-  *)
-    echo "⚠️ Неизвестная ОС, убедитесь что python3 и pip установлены вручную."
-    ;;
-esac
+echo "[2/5] Проверка pip..."
+if ! command -v pip3 >/dev/null 2>&1; then
+  echo "Устанавливаю python3-pip..."
+  sudo apt install -y python3-pip
+fi
 
-echo "[3/6] Установка psutil..."
+echo "[3/5] Установка psutil..."
 if command -v apt >/dev/null 2>&1; then
   if sudo apt install -y python3-psutil; then
     echo "psutil установлен через apt."
@@ -39,23 +25,17 @@ if command -v apt >/dev/null 2>&1; then
     python3 -m pip install --user psutil --break-system-packages
   fi
 else
-  echo "apt недоступен, пробую pip..."
   python3 -m pip install --user psutil --break-system-packages
 fi
 
-echo "[4/6] Копирую sysmon.py..."
+echo "[4/5] Копирую sysmon.py..."
 cp ./sysmon.py "$TARGET"
-chmod 644 "$TARGET"
+chmod +x "$TARGET"
 
-echo "[5/6] Добавляю alias..."
-touch "$HOME/.bashrc"
-if ! grep -Fxq "$ALIAS_LINE" "$HOME/.bashrc"; then
-  echo "$ALIAS_LINE" >> "$HOME/.bashrc"
-  echo "Alias добавлен."
+echo "[5/5] Создаю симлинк..."
+if [ -L "$LINK" ] || [ -f "$LINK" ]; then
+  sudo rm -f "$LINK"
 fi
+sudo ln -s "$TARGET" "$LINK"
 
-echo "[6/6] Активирую alias..."
-# shellcheck disable=SC1090
-source "$HOME/.bashrc"
-
-echo "✅ Готово! Запускайте: sysmon"
+echo "✅ Готово! Теперь запускайте: sysmon"
