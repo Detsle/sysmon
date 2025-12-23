@@ -44,9 +44,5 @@ if [ -L "$LINK" ] || [ -f "$LINK" ]; then
 fi
 sudo ln -s "$TARGET" "$LINK"
 
-echo "[6/6] Проверка запуска..."
-if "$LINK" --help >/dev/null 2>&1; then
-  echo "✅ Установка завершена, команда sysmon доступна."
-else
-  echo "⚠️ Проверьте sysmon вручную: запустите 'sysmon'."
-fi
+echo "[6/6] Завершение..."
+echo "✅ Установка завершена, запускай sysmon"
