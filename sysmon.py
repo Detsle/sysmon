@@ -20,7 +20,6 @@ def main(stdscr):
     prev_time = time.time()
 
     while True:
-        stdscr.clear()
 
         # System
         uptime = datetime.timedelta(seconds=int(time.time() - psutil.boot_time()))
@@ -67,7 +66,8 @@ def main(stdscr):
         prev_io = io
         prev_time = now
 
-        stdscr.refresh()
+        stdscr.noutrefresh()
+        curses.doupdate()
         time.sleep(1)
 
 curses.wrapper(main)
