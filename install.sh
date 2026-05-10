@@ -1,7 +1,7 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE="$SCRIPT_DIR/sysmon.py"
 INSTALL_DIR="/opt/sysmon"
 TARGET="$INSTALL_DIR/sysmon.py"
@@ -32,6 +32,8 @@ if ! command -v python3 >/dev/null 2>&1; then
     echo "Error: python3 not found and apt unavailable."
     exit 1
   fi
+else
+  echo "[1/6] python3 found"
 fi
 
 if ! command -v pip3 >/dev/null 2>&1; then
@@ -42,6 +44,8 @@ if ! command -v pip3 >/dev/null 2>&1; then
     echo "Error: pip3 not found and apt unavailable."
     exit 1
   fi
+else
+  echo "[2/6] pip3 found"
 fi
 
 echo "[3/6] Ensuring psutil..."
