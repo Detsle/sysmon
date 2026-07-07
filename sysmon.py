@@ -70,6 +70,7 @@ def main(stdscr):
         curses.doupdate()
         time.sleep(1)
 
-curses.wrapper(main)
+try:
+    curses.wrapper(main)
 except KeyboardInterrupt:
     sys.exit(0)
