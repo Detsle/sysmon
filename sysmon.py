@@ -71,3 +71,5 @@ def main(stdscr):
         time.sleep(1)
 
 curses.wrapper(main)
+except KeyboardInterrupt:
+    sys.exit(0)
