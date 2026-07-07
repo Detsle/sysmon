@@ -2,6 +2,7 @@ import curses
 import psutil
 import time
 import datetime
+import sys
 
 def draw_box(win, title, y, h, w, x):
     win.addstr(y, x, "┌" + "─"*(w-2) + "┐")
@@ -70,7 +71,8 @@ def main(stdscr):
         curses.doupdate()
         time.sleep(1)
 
-try:
-    curses.wrapper(main)
-except KeyboardInterrupt:
-    sys.exit(0)
+if __name__ == "__main__":
+    try:
+        curses.wrapper(main)
+    except KeyboardInterrupt:
+        sys.exit(0)
