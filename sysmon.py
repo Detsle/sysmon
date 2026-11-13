@@ -29,8 +29,8 @@ DEFAULT_PERIODS = ("today", "7d", "month", "all")
 SAVED_PERIODS = DEFAULT_PERIODS + ("month_history",)
 NETWORK_BOX_TITLE = " Network "
 HOTKEY_ESCAPE_DELAY_MS = 100
-HOTKEY_STATUS_DURATION_SECONDS = 3.0
-QUOTA_INPUT_PROMPT = "Traffic quota in Tb [1, 1.1; blank=Unlimited]: "
+STATUS_MESSAGE_DURATION_SECONDS = 3.0
+QUOTA_INPUT_PROMPT = "Monthly limit (Tb) [X or X.X; blank = Unlimited]: "
 TRAFFIC_COLLECTOR_INTRODUCED_AT = 1794533947  # 2026-11-13 01:39:07 UTC
 PERIOD_LABELS = {
     "today": "Today",
@@ -749,20 +749,15 @@ def prompt_first_run_setup():
         raise SysmonError("First-run setup needs write access to traffic data. Run: sudo sysmon")
 
     print("")
-    print("Sysmon first-run setup")
-    print("----------------------")
-    if int(state.get("accounting_started_at", state.get("created_at", 0))) > int(state.get("created_at", 0)):
-        start_date = data_start_date(state)
-        start_text = "{} {} {}".format(
-            start_date.day, MONTH_ABBREVIATIONS[start_date.month - 1], start_date.year
-        )
-        print("Traffic collection is active since {}.".format(start_text))
-        print("Records from earlier builds are excluded because they did not collect traffic.")
-    else:
-        print("Traffic collection is active since installation.")
-    print("Traffic and quota usage are grouped by calendar month.")
-    print("If collection starts after the first day, that month is partial and marked with *.")
+    print("Sysmon setup")
+    print("------------")
+    start_date = data_start_date(state)
+    start_marker = "*" if start_date.day > 1 else ""
+    start_text = "[{}{}]".format(start_marker, start_date.strftime("%d.%m.%y"))
+    print("Traffic collection started: {}.".format(start_text))
+    print("* = start date of partial-month reporting.")
     print("")
+    print("Traffic is counted separately for each calendar month.")
 
     raw_quota = input(QUOTA_INPUT_PROMPT).strip()
     limit_bytes = None
@@ -774,7 +769,7 @@ def prompt_first_run_setup():
                 "Invalid quota. Using Unlimited.",
                 flush=True,
             )
-            time.sleep(5)
+            time.sleep(STATUS_MESSAGE_DURATION_SECONDS)
 
     update_settings(
         limit_bytes=limit_bytes,
@@ -791,6 +786,7 @@ def read_hotkey_input(stdscr, prompt, max_chars):
     row = 18
     start_x = (width - BOX_WIDTH) // 2 + 3
     content_width = BOX_WIDTH - 6
+    max_chars = min(max_chars, max(0, content_width - len(prompt)))
     safe_addstr(stdscr, row, start_x, " " * content_width, content_width)
     safe_addstr(stdscr, row, start_x, prompt, content_width)
     field_x = start_x + len(prompt)
@@ -1050,7 +1046,7 @@ def main(stdscr, args):
                     update_settings(selected_period=current_period)
                 except (OSError, SysmonError) as exc:
                     hotkey_status = "Cannot return to previous screen: {}".format(exc)
-                    hotkey_status_until = time.monotonic() + HOTKEY_STATUS_DURATION_SECONDS
+                    hotkey_status_until = time.monotonic() + STATUS_MESSAGE_DURATION_SECONDS
             else:
                 break
         elif key in (ord("p"), ord("P")) and current_period != "month_history":
@@ -1063,7 +1059,7 @@ def main(stdscr, args):
                     update_settings(selected_period=current_period)
                 except (OSError, SysmonError) as exc:
                     hotkey_status = "Cannot save period: {}".format(exc)
-                    hotkey_status_until = time.monotonic() + HOTKEY_STATUS_DURATION_SECONDS
+                    hotkey_status_until = time.monotonic() + STATUS_MESSAGE_DURATION_SECONDS
         elif key in (ord("m"), ord("M")) and args.preview_network is None and current_period != "month_history":
             return_period = current_period
             current_period = "month_history"
@@ -1074,7 +1070,7 @@ def main(stdscr, args):
                 update_settings(selected_period=current_period, selected_month=selected_month)
             except (OSError, SysmonError) as exc:
                 hotkey_status = "Cannot save month: {}".format(exc)
-                hotkey_status_until = time.monotonic() + HOTKEY_STATUS_DURATION_SECONDS
+                hotkey_status_until = time.monotonic() + STATUS_MESSAGE_DURATION_SECONDS
         elif key in (ord("c"), ord("C")) and args.preview_network is None and current_period == "month_history":
             selected_month = datetime.date.today().replace(day=1)
             hotkey_status = None
@@ -1083,7 +1079,7 @@ def main(stdscr, args):
                 update_settings(selected_period="month_history", selected_month=selected_month)
             except (OSError, SysmonError) as exc:
                 hotkey_status = "Cannot select current month: {}".format(exc)
-                hotkey_status_until = time.monotonic() + HOTKEY_STATUS_DURATION_SECONDS
+                hotkey_status_until = time.monotonic() + STATUS_MESSAGE_DURATION_SECONDS
         elif key in (ord("["), ord("]")) and args.preview_network is None and current_period == "month_history":
             offset = -1 if key == ord("[") else 1
             target_month = shift_calendar_month(selected_month, offset)
@@ -1092,7 +1088,7 @@ def main(stdscr, args):
             latest_month = datetime.date.today().replace(day=1)
             if target_month < earliest_month or target_month > latest_month:
                 hotkey_status = "No collected data for that month"
-                hotkey_status_until = time.monotonic() + HOTKEY_STATUS_DURATION_SECONDS
+                hotkey_status_until = time.monotonic() + STATUS_MESSAGE_DURATION_SECONDS
             else:
                 selected_month = target_month
                 hotkey_status = None
@@ -1101,10 +1097,10 @@ def main(stdscr, args):
                     update_settings(selected_period="month_history", selected_month=selected_month)
                 except (OSError, SysmonError) as exc:
                     hotkey_status = "Cannot save month: {}".format(exc)
-                    hotkey_status_until = time.monotonic() + HOTKEY_STATUS_DURATION_SECONDS
+                    hotkey_status_until = time.monotonic() + STATUS_MESSAGE_DURATION_SECONDS
         elif key in (ord("q"), ord("Q")) and args.preview_network is None and current_period != "month_history":
             hotkey_status = edit_traffic_quota(stdscr)
-            hotkey_status_until = time.monotonic() + HOTKEY_STATUS_DURATION_SECONDS
+            hotkey_status_until = time.monotonic() + STATUS_MESSAGE_DURATION_SECONDS
 
 
 def build_parser():
