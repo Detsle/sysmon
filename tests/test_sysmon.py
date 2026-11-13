@@ -68,6 +68,19 @@ class TrafficTests(unittest.TestCase):
         self.assertEqual(result["message"], "network counter reset; baseline reset")
         self.assertEqual(state["last_counter"], 100)
 
+    def test_tunnel_default_route_falls_back_to_physical_interface(self):
+        counters = {"wg0": SimpleNamespace(bytes_sent=5000), "eth0": SimpleNamespace(bytes_sent=9000)}
+        with mock.patch.object(sysmon, "linux_default_interface", return_value="wg0"), \
+             mock.patch.object(sysmon, "fallback_interface", return_value="eth0"), \
+             mock.patch.object(sysmon.sys, "platform", "linux"):
+            self.assertEqual(sysmon.detect_interface(counters), "eth0")
+
+    def test_physical_default_route_is_preferred(self):
+        counters = {"eth0": SimpleNamespace(bytes_sent=9000), "wg0": SimpleNamespace(bytes_sent=5000)}
+        with mock.patch.object(sysmon, "linux_default_interface", return_value="eth0"), \
+             mock.patch.object(sysmon.sys, "platform", "linux"):
+            self.assertEqual(sysmon.detect_interface(counters), "eth0")
+
     def test_manual_interface_change_resets_baseline(self):
         self.collect_with(1000)
         state = self.read_state()
