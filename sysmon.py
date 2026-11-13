@@ -29,8 +29,8 @@ DEFAULT_PERIODS = ("today", "7d", "month", "all")
 SAVED_PERIODS = DEFAULT_PERIODS + ("month_history",)
 NETWORK_BOX_TITLE = " Network "
 HOTKEY_ESCAPE_DELAY_MS = 100
-STATUS_MESSAGE_DURATION_SECONDS = 3.0
-QUOTA_INPUT_PROMPT = "Monthly limit (Tb) [X or X.X; blank = Unlimited]: "
+STATUS_MESSAGE_DURATION_SECONDS = 2.0
+QUOTA_INPUT_PROMPT = "Monthly quota (Tb) [X or X.X; blank = Unlimited]: "
 TRAFFIC_COLLECTOR_INTRODUCED_AT = 1794533947  # 2026-11-13 01:39:07 UTC
 PERIOD_LABELS = {
     "today": "Today",
