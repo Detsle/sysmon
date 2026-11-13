@@ -136,6 +136,7 @@ class TrafficTests(unittest.TestCase):
         state["daily"][today.isoformat()] = 987_654_321
         state["last_counter"] = 123_456_789
         state["interface"] = "eth0"
+        state["settings"]["selected_period"] = "last_month"
         sysmon.atomic_save(state)
 
         sysmon.reset_first_run_setup()
@@ -148,6 +149,19 @@ class TrafficTests(unittest.TestCase):
         self.assertEqual(reset["last_counter"], state["last_counter"])
         self.assertEqual(reset["interface"], state["interface"])
         self.assertEqual(reset["created_at"], state["created_at"])
+        self.assertEqual(reset["settings"]["selected_period"], "last_month")
+
+    def test_selected_period_persists_and_legacy_state_defaults_to_today(self):
+        self.collect_with(1000)
+        state = self.read_state()
+        del state["settings"]["selected_period"]
+        sysmon.atomic_save(state)
+
+        loaded = sysmon.load_state()
+        self.assertEqual(loaded["settings"]["selected_period"], "today")
+
+        sysmon.update_settings(selected_period="last_month")
+        self.assertEqual(self.read_state()["settings"]["selected_period"], "last_month")
 
     def test_unlimited_is_default_quota(self):
         self.collect_with(1000)
@@ -422,6 +436,41 @@ class FormattingAndPeriodTests(unittest.TestCase):
             (datetime.date(2026, 10, 15), today),
         )
 
+    def test_calendar_month_periods_respect_month_lengths_and_leap_years(self):
+        self.assertEqual(
+            sysmon.period_bounds("month", today=datetime.date(2026, 2, 13)),
+            (datetime.date(2026, 2, 1), datetime.date(2026, 2, 13)),
+        )
+        self.assertEqual(
+            sysmon.period_bounds("last_month", today=datetime.date(2026, 3, 1)),
+            (datetime.date(2026, 2, 1), datetime.date(2026, 2, 28)),
+        )
+        self.assertEqual(
+            sysmon.period_bounds("last_month", today=datetime.date(2024, 3, 1)),
+            (datetime.date(2024, 2, 1), datetime.date(2024, 2, 29)),
+        )
+
+    def test_partial_calendar_month_is_marked_and_clipped_to_tracking_start(self):
+        install = datetime.date(2026, 1, 1)
+        today = datetime.date(2026, 1, 31)
+        tracking_start = datetime.date(2026, 1, 15)
+        state = {
+            "created_at": int(datetime.datetime.combine(install, datetime.time.min).timestamp()),
+            "settings": {
+                "quota_start_date": tracking_start.isoformat(),
+                "limit_bytes": None,
+            },
+            "daily": {
+                "2026-01-01": 9_000_000_000,
+                "2026-01-14": 8_000_000_000,
+                "2026-01-15": 2_000_000_000,
+                "2026-01-31": 1_000_000_000,
+            },
+        }
+        line = sysmon.network_status_line(state, "month", today=today)
+        self.assertIn("Period: Month*", line)
+        self.assertIn("Traffic: 3.0 Gb", line)
+
     def test_custom_date_range_is_supported(self):
         start = datetime.date(2026, 11, 1)
         end = datetime.date(2026, 11, 13)
@@ -471,6 +520,22 @@ class FormattingAndPeriodTests(unittest.TestCase):
                 self.assertIn("Period: {}".format(label), line)
                 self.assertIn("Traffic: 100.00 Tb", line)
                 self.assertIn("Quota: 100.00 | 100 Tb", line)
+
+    def test_ram_total_uses_nearest_standard_capacity_tier(self):
+        gib = 1024 ** 3
+        self.assertEqual(
+            sysmon.standard_memory_capacity_bytes(round(15.30 * gib)),
+            16 * gib,
+        )
+        self.assertEqual(
+            sysmon.memory_status_line(
+                round(5.36 * gib),
+                round(15.30 * gib),
+                0,
+                4 * gib,
+            ),
+            "Used: 5.4 | 16 Gb   Swap: 0.0 | 4 Gb",
+        )
 
     def test_memory_and_disk_totals_are_rounded_to_integers(self):
         gib = 1024 ** 3
