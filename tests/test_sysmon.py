@@ -45,6 +45,14 @@ class TrafficTests(unittest.TestCase):
         self.assertEqual(state["last_counter"], 1000)
         self.assertEqual(state["daily"], {})
 
+    def test_traffic_accumulates_when_quota_is_unlimited(self):
+        self.collect_with(1000)
+        self.collect_with(4200)
+        state = self.read_state()
+        today = datetime.date.fromtimestamp(state["last_sample"]).isoformat()
+        self.assertIsNone(state["settings"]["limit_bytes"])
+        self.assertEqual(state["daily"][today], 3200)
+
     def test_counter_delta_is_added_to_current_day(self):
         self.collect_with(1000)
         result = self.collect_with(1500)
