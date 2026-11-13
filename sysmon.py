@@ -736,7 +736,10 @@ def prompt_first_run_setup():
     print("Sysmon first-run setup")
     print("----------------------")
     if int(state.get("accounting_started_at", state.get("created_at", 0))) > int(state.get("created_at", 0)):
-        start_text = data_start_date(state).strftime("%d %b %Y")
+        start_date = data_start_date(state)
+        start_text = "{} {} {}".format(
+            start_date.day, MONTH_ABBREVIATIONS[start_date.month - 1], start_date.year
+        )
         print("Traffic collection is active since {}.".format(start_text))
         print("Records from earlier builds are excluded because they did not collect traffic.")
     else:
@@ -865,6 +868,15 @@ def selected_period_text(
     return PERIOD_LABELS[period]
 
 
+def hotkeys_status_line(period, preview=False):
+    """Show month-navigation keys only while monthly history is active."""
+    if preview:
+        return "P: period   Q: quit   PREVIEW MODE"
+    if period == "month_history":
+        return "P: period   M: current   [ ]: browse   L: quota   Q: quit"
+    return "P: period   M: months   L: quota   Q: quit"
+
+
 def cpu_status_line(cpu, bar):
     """Keep the CPU value adjacent to Usage and hold Cores at a fixed column."""
     percentage = "{:.1f}%".format(cpu)
@@ -988,14 +1000,10 @@ def main(stdscr, args):
             hotkeys_line = hotkey_status
         elif args.preview_network is not None:
             hotkey_status = None
-            hotkeys_line = "P: period   Q: quit   PREVIEW MODE"
+            hotkeys_line = hotkeys_status_line(current_period, preview=True)
         else:
             hotkey_status = None
-            hotkeys_line = (
-                "P: period   M: current   [ ]: browse   L: quota   Q: quit"
-                if current_period == "month_history"
-                else "P: period   M: months   L: quota   Q: quit"
-            )
+            hotkeys_line = hotkeys_status_line(current_period)
         safe_addstr(stdscr, 18, x + 3, hotkeys_line, BOX_WIDTH - 6)
 
         stdscr.noutrefresh()
