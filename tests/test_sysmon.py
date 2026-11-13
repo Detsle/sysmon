@@ -176,12 +176,14 @@ class TrafficTests(unittest.TestCase):
                 return True
         with mock.patch.object(sysmon.sys, "stdin", FakeTTY()), \
              mock.patch.object(sysmon.sys, "stdout", FakeTTY()), \
-             mock.patch("builtins.input", side_effect=["", ""]):
+             mock.patch("builtins.input", side_effect=["", ""]) as input_mock:
             sysmon.prompt_first_run_setup()
         state = self.read_state()
         self.assertEqual(state["settings"]["quota_start_date"], datetime.date.today().isoformat())
         self.assertIsNone(state["settings"]["limit_bytes"])
         self.assertTrue(state["settings"]["setup_complete"])
+        quota_prompt = input_mock.call_args_list[1].args[0]
+        self.assertIn("blank = Unlimited", quota_prompt)
 
     def test_first_run_setup_accepts_custom_date_and_quota_tb(self):
         self.collect_with(1000)
@@ -272,21 +274,30 @@ class TrafficTests(unittest.TestCase):
         self.assertIsNone(state["settings"]["limit_bytes"])
         self.assertIn("Invalid quota", status)
 
-    def test_hotkey_quota_accepts_tb_suffix(self):
+    def test_hotkey_quota_rejects_unit_suffix(self):
         self.collect_with(1000)
-        with mock.patch.object(sysmon, "read_hotkey_input", return_value="8Tb"):
+        with mock.patch.object(sysmon, "read_hotkey_input", return_value="8Tb") as read_input:
             status = sysmon.edit_traffic_quota(None)
         state = self.read_state()
-        self.assertEqual(state["settings"]["limit_bytes"], 8_000_000_000_000)
-        self.assertEqual(sysmon.quota_text(state), "Quota: 0.00 | 8 Tb")
+        self.assertIsNone(state["settings"]["limit_bytes"])
+        self.assertIn("Invalid quota", status)
+        self.assertIn("blank = Unlimited", read_input.call_args.args[1])
+
+    def test_hotkey_quota_accepts_numeric_decimal_tb(self):
+        self.collect_with(1000)
+        with mock.patch.object(sysmon, "read_hotkey_input", return_value="4.5"):
+            status = sysmon.edit_traffic_quota(None)
+        state = self.read_state()
+        self.assertEqual(state["settings"]["limit_bytes"], 4_500_000_000_000)
+        self.assertEqual(sysmon.quota_text(state), "Quota: 0.00 | 4.5 Tb")
         self.assertEqual(status, "Quota updated")
 
-    def test_cli_set_limit_bare_number_defaults_to_tb(self):
+    def test_cli_set_limit_accepts_numeric_tb_only(self):
         self.collect_with(1000)
         for quota_input, expected_bytes in (
             ("8", 8_000_000_000_000),
-            ("8Tb", 8_000_000_000_000),
             ("0.5", 500_000_000_000),
+            ("4.5", 4_500_000_000_000),
         ):
             with self.subTest(quota_input=quota_input), \
                  mock.patch.object(sysmon.sys, "argv", ["sysmon", "--set-limit", quota_input]), \
@@ -294,6 +305,12 @@ class TrafficTests(unittest.TestCase):
                 self.assertEqual(sysmon.main_cli(), 0)
             state = self.read_state()
             self.assertEqual(state["settings"]["limit_bytes"], expected_bytes)
+
+        with mock.patch.object(sysmon.sys, "argv", ["sysmon", "--set-limit", "8Tb"]), \
+             mock.patch("builtins.print"):
+            with self.assertRaises(SystemExit) as error:
+                sysmon.main_cli()
+        self.assertEqual(error.exception.code, 2)
 
 
     def test_start_date_cannot_be_earlier_than_installation(self):
@@ -467,12 +484,14 @@ class FormattingAndPeriodTests(unittest.TestCase):
             "1.00 | 0.00 Tb",
         )
 
-    def test_quota_input_defaults_to_tb_and_accepts_decimal_values(self):
+    def test_quota_input_accepts_numeric_decimal_tb_only(self):
         self.assertEqual(sysmon.parse_quota_size("0.5"), 500_000_000_000)
         self.assertEqual(sysmon.parse_quota_size("4.5"), 4_500_000_000_000)
         self.assertEqual(sysmon.parse_quota_size("8"), 8_000_000_000_000)
-        self.assertEqual(sysmon.parse_quota_size("8Tb"), 8_000_000_000_000)
-        self.assertEqual(sysmon.parse_quota_size("0.5 Tb"), 500_000_000_000)
+        with self.assertRaises(ValueError):
+            sysmon.parse_quota_size("8Tb")
+        with self.assertRaises(ValueError):
+            sysmon.parse_quota_size("0.5 Tb")
         with self.assertRaises(ValueError):
             sysmon.parse_quota_size("8000Gb")
         with self.assertRaises(ValueError):
