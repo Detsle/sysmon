@@ -281,6 +281,17 @@ class TrafficTests(unittest.TestCase):
         self.assertEqual(sysmon.quota_text(state), "Quota: 0.0 | 8.00 Tb")
         self.assertEqual(status, "Quota updated")
 
+    def test_cli_set_limit_bare_number_defaults_to_gb(self):
+        self.collect_with(1000)
+        for quota_input in ("8000", "8Tb"):
+            with self.subTest(quota_input=quota_input), \
+                 mock.patch.object(sysmon.sys, "argv", ["sysmon", "--set-limit", quota_input]), \
+                 mock.patch("builtins.print"):
+                self.assertEqual(sysmon.main_cli(), 0)
+            state = self.read_state()
+            self.assertEqual(state["settings"]["limit_bytes"], 8_000_000_000_000)
+
+
     def test_start_date_cannot_be_earlier_than_installation(self):
         self.collect_with(1000)
         installed_at = datetime.date.fromtimestamp(self.read_state()["created_at"])
