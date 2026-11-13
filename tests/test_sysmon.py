@@ -568,6 +568,7 @@ class FormattingAndPeriodTests(unittest.TestCase):
         line = sysmon.network_status_line(state, "month", today=today)
         self.assertIn("Period: 1 month", line)
         self.assertNotIn("*", line)
+        self.assertNotIn("(from", line)
         self.assertIn("Traffic: 20.0 Gb", line)
         self.assertNotIn("Quota:", line)
 
@@ -587,9 +588,10 @@ class FormattingAndPeriodTests(unittest.TestCase):
             },
         }
         line = sysmon.network_status_line(state, "month", today=today)
-        self.assertIn("Period: 1 month*", line)
+        self.assertIn("Period: 1 month* (from 15 Jan)", line)
         self.assertIn("Traffic: 3.0 Gb", line)
         self.assertNotIn("Quota:", line)
+        self.assertLessEqual(len(line), sysmon.BOX_WIDTH - 6)
 
     def test_month_history_marks_only_the_partial_first_accounting_month(self):
         install = datetime.date(2026, 1, 15)
@@ -614,10 +616,11 @@ class FormattingAndPeriodTests(unittest.TestCase):
             today=datetime.date(2026, 2, 15),
             selected_month=datetime.date(2026, 2, 1),
         )
-        self.assertIn("Period: Jan ’26*", first_month)
+        self.assertIn("Period: Jan ’26* (from 15 Jan)", first_month)
         self.assertIn("Traffic: 2.0 Gb", first_month)
         self.assertIn("Period: Feb ’26", following_month)
         self.assertNotIn("*", following_month)
+        self.assertNotIn("(from", following_month)
 
     def test_custom_date_range_is_supported(self):
         start = datetime.date(2026, 11, 1)
