@@ -424,14 +424,17 @@ class FormattingAndPeriodTests(unittest.TestCase):
 
     def test_calendar_period_labels_include_month_and_year(self):
         today = datetime.date(2026, 2, 15)
-        self.assertEqual(sysmon.selected_period_text("month", today=today), "Feb 2026")
-        self.assertEqual(sysmon.selected_period_text("last_month", today=today), "Jan 2026")
+        self.assertEqual(sysmon.selected_period_text("month", today=today), "Feb ’26")
+        self.assertEqual(sysmon.selected_period_text("last_month", today=today), "Jan ’26")
         self.assertEqual(
             sysmon.selected_period_text(
                 "month_history", today=today, selected_month=datetime.date(2025, 12, 1)
             ),
-            "Dec 2025",
+            "Dec ’25",
         )
+
+    def test_network_box_title_explains_partial_month_marker(self):
+        self.assertIn("* = partial month", " Network (* = partial month) ")
 
     def test_calendar_month_periods_respect_month_lengths_and_leap_years(self):
         self.assertEqual(
@@ -478,7 +481,7 @@ class FormattingAndPeriodTests(unittest.TestCase):
             today=datetime.date(2026, 2, 15),
             selected_month=datetime.date(2026, 1, 1),
         )
-        self.assertIn("Period: Jan 2026", line)
+        self.assertIn("Period: Jan ’26", line)
         self.assertIn("Traffic: 2.0 Gb", line)
         self.assertIn("Quota: 2.0 Gb | 8 Tb", line)
 
