@@ -550,7 +550,10 @@ def edit_quota_start_date(stdscr):
         selected = parse_display_date(raw)
         if selected > datetime.date.today():
             raise ValueError("Date cannot be in the future")
+        installed_at = datetime.date.fromtimestamp(int(state.get("created_at", time.time())))
         update_settings(quota_start_date=selected, setup_complete=True)
+        if selected < installed_at:
+            return "Updated; traffic before installation is unavailable"
         return "Quota start date updated"
     except ValueError as exc:
         return "Invalid date: {}".format(exc)
