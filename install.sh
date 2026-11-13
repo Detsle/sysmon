@@ -203,6 +203,7 @@ install_cron_job() {
             Linux:apk) apk add --no-cache dcron ;;
             Linux:pacman) pacman -S --needed --noconfirm cronie ;;
             Linux:zypper) zypper --non-interactive install cron ;;
+            Linux:emerge) emerge --ask=n sys-process/cronie ;;
             *) fail "crontab is unavailable on $OS_NAME. Install a cron implementation and rerun." ;;
         esac
     fi
