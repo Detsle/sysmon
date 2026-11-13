@@ -60,17 +60,19 @@ sysmon --from-date 2026-11-01 --to-date 2026-11-13
 
 On the first launch, Sysmon asks for:
 
-- Traffic start date in `DD.MM.YYYY` format (day/month/year); default: the current date.
-- Traffic quota in decimal GB; default: `Unlimited`.
+- Traffic start date in `DD.MM.YYYY` format (day/month/year); default: the current date. Blank or invalid input uses today's date.
+- Traffic quota in decimal GB; default: `Unlimited`. Blank or invalid input sets `Unlimited`.
 
-The start date cannot be earlier than the installation date. A future start date is allowed: Traffic and a configured Quota usage display `-` until that date. The same start date is used to filter both the selected Traffic period and accumulated Quota usage.
+The start date cannot be earlier than the installation date. A future start date is allowed: Traffic and a configured Quota usage display `-` until that date. The same start date is used to filter both the selected Traffic period and accumulated Quota usage. Invalid-input messages remain visible for five seconds.
 
 Hotkeys:
 
-- `D` — change the Traffic start date.
+- `D` — change the shared Traffic/Quota start date.
 - `L` — change the quota in GB or set it to `Unlimited`.
 
-Traffic and quota values are displayed in decimal GB with one fractional digit, matching the Memory/Disk value style (for example, `0.1G`). Non-zero amounts below 0.05 GB are shown as `<0.1G` rather than being rounded down to `0.0G`. When the quota is unlimited, `Quota: Unlimited` remains visible while traffic collection continues.
+The start date applies to both Traffic and Quota; they cannot be configured independently. Blank date input sets today's date. Blank quota input sets `Unlimited`. Invalid date input falls back to today's date, and invalid quota input falls back to `Unlimited`. Error messages remain visible for five seconds.
+
+Traffic, Memory, Disk, and Quota values use the `GB` suffix. Traffic and quota values are displayed in decimal GB with one fractional digit (for example, `0.1GB`). When the quota is `Unlimited`, the Quota field is hidden entirely while traffic collection continues. The Network row keeps values up to 100,000 GB (100 TB) within the existing box width.
 
 Optional administrative commands:
 
