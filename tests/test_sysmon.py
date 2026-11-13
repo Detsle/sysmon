@@ -158,8 +158,35 @@ class TrafficTests(unittest.TestCase):
         loaded = sysmon.load_state()
         self.assertEqual(loaded["settings"]["selected_period"], "today")
 
-        sysmon.update_settings(selected_period="last_month")
-        self.assertEqual(self.read_state()["settings"]["selected_period"], "last_month")
+        sysmon.update_settings(
+            selected_period="month_history",
+            selected_month=datetime.date(2026, 1, 1),
+        )
+        saved = self.read_state()["settings"]
+        self.assertEqual(saved["selected_period"], "month_history")
+        self.assertEqual(saved["selected_month"], "2026-01-01")
+
+    def test_main_cli_restores_saved_month_history_selection(self):
+        self.collect_with(1000)
+        selected = datetime.date(2026, 1, 1)
+        sysmon.update_settings(
+            selected_period="month_history",
+            selected_month=selected,
+            setup_complete=True,
+        )
+        captured = {}
+
+        def fake_wrapper(callback, args):
+            captured["period"] = args.period
+            captured["selected_month"] = args.selected_month
+
+        with mock.patch.object(sysmon.sys, "argv", ["sysmon"]), \
+             mock.patch.object(sysmon, "prompt_first_run_setup"), \
+             mock.patch.object(sysmon.curses, "wrapper", side_effect=fake_wrapper):
+            self.assertEqual(sysmon.main_cli(), 0)
+
+        self.assertEqual(captured["period"], "month_history")
+        self.assertEqual(captured["selected_month"], selected)
 
     def test_unlimited_is_default_quota(self):
         self.collect_with(1000)
@@ -396,14 +423,36 @@ class FormattingAndPeriodTests(unittest.TestCase):
             (datetime.date(2026, 10, 15), today),
         )
 
-    def test_calendar_period_labels_are_available(self):
-        self.assertEqual(sysmon.selected_period_text("month"), "Month")
-        self.assertEqual(sysmon.selected_period_text("last_month"), "Last month")
+    def test_calendar_period_labels_include_month_and_year(self):
+        today = datetime.date(2026, 2, 15)
+        self.assertEqual(sysmon.selected_period_text("month", today=today), "Feb 2026")
+        self.assertEqual(sysmon.selected_period_text("last_month", today=today), "Jan 2026")
+        self.assertEqual(
+            sysmon.selected_period_text(
+                "month_history", today=today, selected_month=datetime.date(2025, 12, 1)
+            ),
+            "Dec 2025",
+        )
 
     def test_calendar_month_periods_respect_month_lengths_and_leap_years(self):
         self.assertEqual(
             sysmon.period_bounds("month", today=datetime.date(2026, 2, 13)),
             (datetime.date(2026, 2, 1), datetime.date(2026, 2, 13)),
+        )
+        self.assertEqual(
+            sysmon.period_bounds(
+                "month_history", today=datetime.date(2026, 2, 13),
+                selected_month=datetime.date(2025, 12, 1),
+            ),
+            (datetime.date(2025, 12, 1), datetime.date(2025, 12, 31)),
+        )
+        self.assertEqual(
+            sysmon.shift_calendar_month(datetime.date(2025, 12, 1), 1),
+            datetime.date(2026, 1, 1),
+        )
+        self.assertEqual(
+            sysmon.shift_calendar_month(datetime.date(2026, 1, 1), -1),
+            datetime.date(2025, 12, 1),
         )
         self.assertEqual(
             sysmon.period_bounds("last_month", today=datetime.date(2026, 3, 1)),
@@ -414,7 +463,27 @@ class FormattingAndPeriodTests(unittest.TestCase):
             (datetime.date(2024, 2, 1), datetime.date(2024, 2, 29)),
         )
 
-    def test_monthly_traffic_ignores_quota_start_date_when_history_exists(self):
+    def test_month_history_shows_selected_month_traffic_and_quota_with_year(self):
+        install = datetime.date(2026, 1, 1)
+        state = {
+            "created_at": int(datetime.datetime.combine(install, datetime.time.min).timestamp()),
+            "settings": {"limit_bytes": 8_000_000_000_000},
+            "daily": {
+                "2026-01-31": 2_000_000_000,
+                "2026-02-01": 3_000_000_000,
+            },
+        }
+        line = sysmon.network_status_line(
+            state,
+            "month_history",
+            today=datetime.date(2026, 2, 15),
+            selected_month=datetime.date(2026, 1, 1),
+        )
+        self.assertIn("Period: Jan 2026", line)
+        self.assertIn("Traffic: 2.0 Gb", line)
+        self.assertIn("Quota: 2.0 Gb | 8 Tb", line)
+
+    def test_monthly_traffic_includes_all_collected_days_since_installation(self):
         install = datetime.date(2026, 1, 1)
         today = datetime.date(2026, 1, 31)
         quota_start = datetime.date(2026, 1, 15)
@@ -491,7 +560,6 @@ class FormattingAndPeriodTests(unittest.TestCase):
         state = {
             "created_at": int(datetime.datetime.combine(install, datetime.time.min).timestamp()),
             "settings": {
-                "quota_start_date": install.isoformat(),
                 "limit_bytes": amount,
             },
             "daily": {today.isoformat(): amount},
@@ -586,6 +654,10 @@ class FormattingAndPeriodTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             sysmon.parse_quota_size("invalid")
 
+    def test_five_gib_file_size_formats_as_decimal_gigabytes(self):
+        five_gib = 5 * (1024 ** 3)
+        self.assertEqual(sysmon.format_gigabytes(five_gib), "5.4 Gb")
+
     def test_quota_usage_below_five_gb_is_visible_in_gb(self):
         self.assertEqual(
             sysmon.format_quota_pair(3_200_000_000, 8_000_000_000_000),
@@ -624,7 +696,7 @@ class FormattingAndPeriodTests(unittest.TestCase):
         self.assertTrue(high.startswith("Usage: 100.0%"))
         self.assertEqual(low.index("Cores:"), high.index("Cores:"))
 
-    def test_period_labels_use_requested_lowercase_style(self):
+    def test_standard_period_labels_remain_available(self):
         self.assertEqual(sysmon.selected_period_text("7d"), "7 days")
         self.assertEqual(sysmon.selected_period_text("30d"), "30 days")
         self.assertEqual(sysmon.selected_period_text("all"), "All time")
