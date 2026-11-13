@@ -28,6 +28,8 @@ BOX_WIDTH = 70
 DEFAULT_PERIODS = ("today", "7d", "month", "all")
 SAVED_PERIODS = DEFAULT_PERIODS + ("month_history",)
 NETWORK_BOX_TITLE = " Network "
+HOTKEY_ESCAPE_DELAY_MS = 100
+QUOTA_INPUT_PROMPT = "Traffic quota in Tb [e.g. 1 or 1.1; blank = Unlimited]: "
 TRAFFIC_COLLECTOR_INTRODUCED_AT = 1794533947  # 2026-11-13 01:39:07 UTC
 PERIOD_LABELS = {
     "today": "Today",
@@ -759,9 +761,7 @@ def prompt_first_run_setup():
     print("If collection starts after the first day, that month is partial and marked with *.")
     print("")
 
-    raw_quota = input(
-        "Traffic quota in Tb [blank = Unlimited]: "
-    ).strip()
+    raw_quota = input(QUOTA_INPUT_PROMPT).strip()
     limit_bytes = None
     if raw_quota and raw_quota.lower() not in ("unlimited", "none", "off"):
         try:
@@ -815,8 +815,7 @@ def edit_traffic_quota(stdscr):
     state, error = read_state_for_ui()
     if error or state is None:
         return "Traffic data unavailable"
-    prompt = "Traffic quota in Tb [blank = Unlimited]: "
-    raw = read_hotkey_input(stdscr, prompt, 16)
+    raw = read_hotkey_input(stdscr, QUOTA_INPUT_PROMPT, 16)
     limit_bytes = None
     error_message = None
     if raw and raw.lower() not in ("unlimited", "none", "off"):
@@ -917,10 +916,21 @@ def disk_status_line(disk_used, disk_total, read_speed, write_speed):
     )
 
 
-def main(stdscr, args):
-    curses.curs_set(0)
+def configure_curses_input(stdscr):
+    """Reduce curses' wait for distinguishing Esc from a terminal key sequence."""
+    set_escdelay = getattr(curses, "set_escdelay", None)
+    if set_escdelay is not None:
+        try:
+            set_escdelay(HOTKEY_ESCAPE_DELAY_MS)
+        except curses.error:
+            pass
     stdscr.keypad(True)
     stdscr.timeout(1000)
+
+
+def main(stdscr, args):
+    curses.curs_set(0)
+    configure_curses_input(stdscr)
 
     periods = list(DEFAULT_PERIODS)
     current_period = args.period or "today"
