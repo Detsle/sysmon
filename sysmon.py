@@ -815,25 +815,20 @@ def cpu_status_line(cpu, bar):
 
 
 def standard_memory_capacity_bytes(total_bytes):
-    """Round RAM to a familiar decimal GB tier only when it is close to that tier."""
+    """Round a binary OS memory total to the nearest nominal 2^n GiB capacity."""
     if total_bytes <= 0:
         return total_bytes
-    decimal_gb = total_bytes / float(1000 ** 3)
-    exponent = max(0, int(math.floor(math.log(decimal_gb, 2) + 0.5)))
-    tier_gb = float(2 ** exponent)
-    if abs(decimal_gb - tier_gb) / decimal_gb <= 0.05:
-        display_gb = tier_gb
-    else:
-        display_gb = round(decimal_gb)
-    return int(display_gb * (1000 ** 3))
+    gib = total_bytes / float(1024 ** 3)
+    exponent = max(0, int(math.floor(math.log(gib, 2) + 0.5)))
+    return int((2 ** exponent) * (1024 ** 3))
 
 
 def memory_status_line(memory_used, memory_total, swap_used, swap_total):
-    """Render actual RAM use and a familiar nominal total in decimal GB."""
+    """Keep actual used RAM and show a conventional nominal RAM total."""
     memory_total = standard_memory_capacity_bytes(memory_total)
     return "Used: {}   Swap: {}".format(
-        format_gigabyte_pair(memory_used, memory_total, binary=False, integer_total=True),
-        format_gigabyte_pair(swap_used, swap_total, binary=False, integer_total=True),
+        format_gigabyte_pair(memory_used, memory_total, binary=True, integer_total=True),
+        format_gigabyte_pair(swap_used, swap_total, binary=True, integer_total=True),
     )
 
 
@@ -854,6 +849,7 @@ def main(stdscr, args):
     periods = list(DEFAULT_PERIODS)
     current_period = args.period or "today"
     period_index = periods.index(current_period) if current_period in periods else -1
+    selected_month = args.selected_month or datetime.date.today().replace(day=1)
     custom_from = parse_display_date(args.from_date) if args.from_date else None
     custom_to = parse_display_date(args.to_date) if args.to_date else None
     hotkey_status = None
@@ -929,7 +925,8 @@ def main(stdscr, args):
             else:
                 try:
                     network_line = network_status_line(
-                        state, current_period, custom_from=custom_from, custom_to=custom_to
+                        state, current_period, custom_from=custom_from, custom_to=custom_to,
+                        selected_month=selected_month,
                     )
                     last_sample = state.get("last_sample")
                     if last_sample and time.time() - int(last_sample) > 180:
@@ -946,7 +943,7 @@ def main(stdscr, args):
             hotkeys_line = "P: period   Q: quit   PREVIEW MODE"
         else:
             hotkey_status = None
-            hotkeys_line = "P: period   D: quota start date   L: quota   Q: quit"
+            hotkeys_line = "P: period   M: months   [ ]: browse   L: quota   Q: quit"
         safe_addstr(stdscr, 18, x + 3, hotkeys_line, BOX_WIDTH - 6)
 
         stdscr.noutrefresh()
@@ -965,8 +962,36 @@ def main(stdscr, args):
                 except (OSError, SysmonError) as exc:
                     hotkey_status = "Cannot save period: {}".format(exc)
                 hotkey_status_until = time.monotonic() + 5.0
-        elif key in (ord("d"), ord("D")) and args.preview_network is None:
-            hotkey_status = edit_quota_start_date(stdscr)
+        elif key in (ord("m"), ord("M")) and args.preview_network is None:
+            if current_period != "month_history":
+                selected_month = datetime.date.today().replace(day=1)
+            current_period = "month_history"
+            period_index = -1
+            try:
+                update_settings(selected_period=current_period, selected_month=selected_month)
+                hotkey_status = "Monthly history: {}".format(selected_month.strftime("%b %Y"))
+            except (OSError, SysmonError) as exc:
+                hotkey_status = "Cannot save month: {}".format(exc)
+            hotkey_status_until = time.monotonic() + 5.0
+        elif key in (ord("["), ord("]")) and args.preview_network is None:
+            if current_period != "month_history":
+                current_period = "month_history"
+                period_index = -1
+                selected_month = datetime.date.today().replace(day=1)
+            offset = -1 if key == ord("[") else 1
+            target_month = shift_calendar_month(selected_month, offset)
+            state = load_state()
+            earliest_month = data_start_date(state).replace(day=1)
+            latest_month = datetime.date.today().replace(day=1)
+            if target_month < earliest_month or target_month > latest_month:
+                hotkey_status = "No collected data for that month"
+            else:
+                selected_month = target_month
+                try:
+                    update_settings(selected_period="month_history", selected_month=selected_month)
+                    hotkey_status = "Month: {}".format(selected_month.strftime("%b %Y"))
+                except (OSError, SysmonError) as exc:
+                    hotkey_status = "Cannot save month: {}".format(exc)
             hotkey_status_until = time.monotonic() + 5.0
         elif key in (ord("l"), ord("L")) and args.preview_network is None:
             hotkey_status = edit_traffic_quota(stdscr)
@@ -991,7 +1016,6 @@ def build_parser():
         help="set outbound traffic quota in decimal Tb (numeric value only), e.g. 0.5, 4.5, or 8",
     )
     parser.add_argument("--clear-limit", action="store_true", help="set the traffic quota to Unlimited")
-    parser.add_argument("--quota-start-date", metavar="DD-MM-YY", help="set the quota calculation start date")
     parser.add_argument(
         "--reset-setup",
         action="store_true",
@@ -1038,7 +1062,6 @@ def main_cli():
             args.reset_setup,
             args.set_limit is not None,
             args.clear_limit,
-            args.quota_start_date is not None,
             args.interface is not None,
         )):
             parser.error("--preview-network cannot be combined with collector or settings options")
@@ -1066,36 +1089,17 @@ def main_cli():
         ))
         return 0
 
-    if any((args.set_limit is not None, args.clear_limit, args.quota_start_date is not None, args.interface is not None)):
+    if any((args.set_limit is not None, args.clear_limit, args.interface is not None)):
         limit_bytes = parse_quota_size(args.set_limit) if args.set_limit else None
         interface = args.interface
         if interface is not None and not interface:
             parser.error("--interface must be a name or 'auto'")
-        quota_start_date = None
-        if args.quota_start_date:
-            try:
-                quota_start_date = parse_display_date(args.quota_start_date)
-                state = load_state()
-                installed_at = (
-                    datetime.date.fromtimestamp(int(state.get("created_at", time.time())))
-                    if state else datetime.date.today()
-                )
-                if quota_start_date < installed_at:
-                    raise ValueError(
-                        "Date cannot be earlier than installation ({})".format(
-                            installed_at.strftime("%d-%m-%y")
-                        )
-                    )
-            except ValueError as exc:
-                parser.error("invalid --quota-start-date: {}".format(exc))
         update_settings(
             interface=interface,
             limit_bytes=limit_bytes,
             set_limit=args.set_limit is not None,
             clear_limit=args.clear_limit,
-            quota_start_date=quota_start_date,
-            selected_period=args.period if args.period in DEFAULT_PERIODS else None,
-            setup_complete=(args.set_limit is not None or args.clear_limit or quota_start_date is not None),
+            setup_complete=(args.set_limit is not None or args.clear_limit),
         )
         print("Sysmon settings updated.")
         return 0
