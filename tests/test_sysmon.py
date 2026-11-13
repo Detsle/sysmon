@@ -245,7 +245,7 @@ class TrafficTests(unittest.TestCase):
         self.assertIn("If collection starts after the first day, that month is partial and marked with *.", fake_stdout.getvalue())
         self.assertEqual(
             input_mock.call_args.args[0],
-            "Traffic quota in Tb [blank = Unlimited]: ",
+            sysmon.QUOTA_INPUT_PROMPT,
         )
 
     def test_first_run_setup_accepts_numeric_monthly_quota(self):
@@ -319,7 +319,7 @@ class TrafficTests(unittest.TestCase):
         state = self.read_state()
         self.assertIsNone(state["settings"]["limit_bytes"])
         self.assertIn("Invalid quota", status)
-        self.assertEqual(read_input.call_args.args[1], "Traffic quota in Tb [blank = Unlimited]: ")
+        self.assertEqual(read_input.call_args.args[1], sysmon.QUOTA_INPUT_PROMPT)
 
     def test_hotkey_quota_accepts_numeric_decimal_tb(self):
         self.collect_with(1000)
@@ -726,6 +726,8 @@ class FormattingAndPeriodTests(unittest.TestCase):
 
     def test_quota_input_accepts_numeric_decimal_tb_only(self):
         self.assertEqual(sysmon.parse_quota_size("0.5"), 500_000_000_000)
+        self.assertEqual(sysmon.parse_quota_size("1"), 1_000_000_000_000)
+        self.assertEqual(sysmon.parse_quota_size("1.1"), 1_100_000_000_000)
         self.assertEqual(sysmon.parse_quota_size("4.5"), 4_500_000_000_000)
         self.assertEqual(sysmon.parse_quota_size("8"), 8_000_000_000_000)
         with self.assertRaises(ValueError):
@@ -782,6 +784,16 @@ class FormattingAndPeriodTests(unittest.TestCase):
         self.assertTrue(low.startswith("Usage: 0.0%"))
         self.assertTrue(high.startswith("Usage: 100.0%"))
         self.assertEqual(low.index("Cores:"), high.index("Cores:"))
+
+    def test_curses_input_uses_short_escape_key_delay(self):
+        stdscr = mock.Mock()
+        with mock.patch.object(sysmon.curses, "set_escdelay", create=True) as set_escdelay:
+            sysmon.configure_curses_input(stdscr)
+
+        set_escdelay.assert_called_once_with(sysmon.HOTKEY_ESCAPE_DELAY_MS)
+        self.assertLess(sysmon.HOTKEY_ESCAPE_DELAY_MS, 1000)
+        stdscr.keypad.assert_called_once_with(True)
+        stdscr.timeout.assert_called_once_with(1000)
 
     def test_month_navigation_hotkeys_are_hidden_until_month_history_is_open(self):
         for period in ("today", "7d", "month", "all"):
