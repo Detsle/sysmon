@@ -879,11 +879,11 @@ def selected_period_text(
 
 
 def hotkeys_status_line(period, preview=False):
-    """Show month-navigation keys only while monthly history is active."""
+    """Show only month-navigation and back controls while monthly history is active."""
     if preview:
         return "P: period   Q: quit   PREVIEW MODE"
     if period == "month_history":
-        return "P: period   M: current   [ ]: browse   L: quota   Q: quit"
+        return "M: current   [ ]: browse   Esc: back"
     return "P: period   M: months   L: quota   Q: quit"
 
 
@@ -919,6 +919,7 @@ def main(stdscr, args):
     periods = list(DEFAULT_PERIODS)
     current_period = args.period or "today"
     period_index = periods.index(current_period) if current_period in periods else -1
+    return_period = current_period if current_period in periods else "today"
     selected_month = args.selected_month or datetime.date.today().replace(day=1)
     custom_from = parse_display_date(args.from_date) if args.from_date else None
     custom_to = parse_display_date(args.to_date) if args.to_date else None
@@ -1020,9 +1021,23 @@ def main(stdscr, args):
         curses.doupdate()
 
         key = stdscr.getch()
-        if key in (ord("q"), ord("Q"), 27):
-            break
-        if key in (ord("p"), ord("P")):
+        if key == 27:
+            if current_period == "month_history":
+                current_period = return_period
+                period_index = periods.index(current_period)
+                hotkey_status = None
+                hotkey_status_until = 0.0
+                try:
+                    update_settings(selected_period=current_period)
+                except (OSError, SysmonError) as exc:
+                    hotkey_status = "Cannot return to previous screen: {}".format(exc)
+                    hotkey_status_until = time.monotonic() + 5.0
+            else:
+                break
+        elif key in (ord("q"), ord("Q")):
+            if current_period != "month_history":
+                break
+        elif key in (ord("p"), ord("P")) and current_period != "month_history":
             period_index = (period_index + 1) % len(periods)
             current_period = periods[period_index]
             if args.preview_network is None:
@@ -1036,6 +1051,8 @@ def main(stdscr, args):
         elif key in (ord("m"), ord("M")) and args.preview_network is None:
             if current_period == "month_history":
                 selected_month = datetime.date.today().replace(day=1)
+            else:
+                return_period = current_period
             current_period = "month_history"
             period_index = -1
             hotkey_status = None
@@ -1063,7 +1080,7 @@ def main(stdscr, args):
                 except (OSError, SysmonError) as exc:
                     hotkey_status = "Cannot save month: {}".format(exc)
                     hotkey_status_until = time.monotonic() + 5.0
-        elif key in (ord("l"), ord("L")) and args.preview_network is None:
+        elif key in (ord("l"), ord("L")) and args.preview_network is None and current_period != "month_history":
             hotkey_status = edit_traffic_quota(stdscr)
             hotkey_status_until = time.monotonic() + 5.0
 
