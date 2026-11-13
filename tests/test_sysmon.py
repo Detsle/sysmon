@@ -157,13 +157,14 @@ class TrafficTests(unittest.TestCase):
         loaded = sysmon.load_state()
         self.assertEqual(loaded["settings"]["selected_period"], "today")
 
+        selected = datetime.date.today().replace(day=1)
         sysmon.update_settings(
             selected_period="month_history",
-            selected_month=datetime.date(2026, 1, 1),
+            selected_month=selected,
         )
         saved = self.read_state()["settings"]
         self.assertEqual(saved["selected_period"], "month_history")
-        self.assertEqual(saved["selected_month"], "2026-01-01")
+        self.assertEqual(saved["selected_month"], selected.isoformat())
 
     def test_main_cli_restores_saved_month_history_selection(self):
         self.collect_with(1000)
@@ -225,8 +226,9 @@ class TrafficTests(unittest.TestCase):
         class FakeTTY(io.StringIO):
             def isatty(self):
                 return True
+        fake_stdout = FakeTTY()
         with mock.patch.object(sysmon.sys, "stdin", FakeTTY()), \
-             mock.patch.object(sysmon.sys, "stdout", FakeTTY()), \
+             mock.patch.object(sysmon.sys, "stdout", fake_stdout), \
              mock.patch("builtins.input", side_effect=[""]) as input_mock:
             sysmon.prompt_first_run_setup()
         state = self.read_state()
@@ -234,6 +236,9 @@ class TrafficTests(unittest.TestCase):
         self.assertEqual(state["settings"]["selected_period"], "today")
         self.assertIsNone(state["settings"]["limit_bytes"])
         self.assertTrue(state["settings"]["setup_complete"])
+        self.assertIn("Traffic collection is active since installation.", fake_stdout.getvalue())
+        self.assertIn("Traffic and quota usage are grouped by calendar month.", fake_stdout.getvalue())
+        self.assertIn("The first accounting month may be partial.", fake_stdout.getvalue())
         self.assertEqual(
             input_mock.call_args.args[0],
             "Traffic quota in Tb [blank = Unlimited]: ",
@@ -374,6 +379,8 @@ class TrafficTests(unittest.TestCase):
         migrated = sysmon.load_state()
         trusted_start = datetime.date.fromtimestamp(sysmon.TRAFFIC_COLLECTOR_INTRODUCED_AT)
         self.assertEqual(sysmon.data_start_date(migrated), trusted_start)
+        self.assertIsNone(migrated["last_counter"])
+        self.assertIsNone(migrated["last_sample"])
         self.assertEqual(migrated["settings"]["selected_period"], "today")
         self.assertEqual(migrated["settings"]["selected_month"], trusted_start.replace(day=1).isoformat())
         self.assertEqual(
@@ -393,6 +400,22 @@ class TrafficTests(unittest.TestCase):
         self.assertIn("Period: Nov ’26", history_line)
         self.assertIn("Traffic: 3.0 Gb", history_line)
         self.assertNotIn("Oct", history_line)
+
+    def test_standard_periods_always_show_the_current_month_quota(self):
+        state = {
+            "created_at": int(datetime.datetime(2026, 11, 1).timestamp()),
+            "accounting_started_at": int(datetime.datetime(2026, 11, 1).timestamp()),
+            "settings": {"limit_bytes": 8_000_000_000_000},
+            "daily": {
+                "2026-10-31": 90_000_000_000,
+                "2026-11-13": 3_000_000_000,
+            },
+        }
+        line = sysmon.network_status_line(
+            state, "all", today=datetime.date(2026, 11, 13)
+        )
+        self.assertIn("Quota: 3.0 Gb | 8 Tb", line)
+        self.assertNotIn("90.0 Gb", line)
 
     def test_unlimited_quota_remains_hidden_in_network_line(self):
         self.collect_with(1000)
