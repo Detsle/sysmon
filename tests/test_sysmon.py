@@ -135,8 +135,11 @@ class TrafficTests(unittest.TestCase):
 
     def test_first_run_setup_defaults_to_today_and_unlimited(self):
         self.collect_with(1000)
-        with mock.patch.object(sys.stdin, "isatty", return_value=True), \
-             mock.patch.object(sys.stdout, "isatty", return_value=True), \
+        class FakeTTY:
+            def isatty(self):
+                return True
+        with mock.patch.object(sysmon.sys, "stdin", FakeTTY()), \
+             mock.patch.object(sysmon.sys, "stdout", FakeTTY()), \
              mock.patch("builtins.input", side_effect=["", ""]):
             sysmon.prompt_first_run_setup()
         state = self.read_state()
@@ -146,8 +149,11 @@ class TrafficTests(unittest.TestCase):
 
     def test_first_run_setup_accepts_custom_date_and_quota_gb(self):
         self.collect_with(1000)
-        with mock.patch.object(sys.stdin, "isatty", return_value=True), \
-             mock.patch.object(sys.stdout, "isatty", return_value=True), \
+        class FakeTTY:
+            def isatty(self):
+                return True
+        with mock.patch.object(sysmon.sys, "stdin", FakeTTY()), \
+             mock.patch.object(sysmon.sys, "stdout", FakeTTY()), \
              mock.patch("builtins.input", side_effect=["01.11.2026", "2"]):
             sysmon.prompt_first_run_setup()
         state = self.read_state()
