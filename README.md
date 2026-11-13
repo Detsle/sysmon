@@ -82,6 +82,17 @@ sysmon --clear-limit
 
 Settings are stored in `traffic.json`. Run configuration commands as `root` or through `sudo`/`doas`; regular users only need read access to the statistics.
 
+## Reset first-run setup
+
+For testing the first-run prompts, reset only the date/quota setup:
+
+```sh
+sudo sysmon --reset-setup
+sudo sysmon
+```
+
+The next launch asks for the Traffic start date and quota again. The reset restores the start-date default to the current date and the quota to `Unlimited`. It preserves the collected daily traffic, installation timestamp, selected network interface, and collector baseline. It does not restart or reset background traffic collection.
+
 ## Сетевой интерфейс
 
 По умолчанию Sysmon определяет интерфейс основного маршрута по умолчанию и учитывает его `bytes_sent`. Известные loopback-, tunnel-, bridge- и container-интерфейсы не выбираются автоматически: если маршрут по умолчанию направлен через VPN-туннель, Sysmon пытается найти единственный активный физический интерфейс. Это помогает не учитывать один пакет дважды. При нескольких возможных физических интерфейсах автоматический выбор прекращается — нужно указать нужный интерфейс вручную.
