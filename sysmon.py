@@ -1173,10 +1173,11 @@ def main_cli():
             return 0
         state = load_state()
         if args.period is None:
-            args.period = (
-                state.get("settings", {}).get("selected_period", "today")
-                if state else "today"
-            )
+            saved_period = state.get("settings", {}).get("selected_period", "today") if state else "today"
+            # Monthly history is a contextual view: reopen it only after the user presses M.
+            args.period = "today" if saved_period == "month_history" else saved_period
+            if saved_period == "month_history" and state:
+                update_settings(selected_period="today")
         elif args.period in DEFAULT_PERIODS:
             update_settings(selected_period=args.period)
         args.selected_month = (
