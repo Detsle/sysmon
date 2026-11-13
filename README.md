@@ -108,7 +108,7 @@ sudo sysmon --reset-setup
 sudo sysmon
 ```
 
-The next launch asks for the monthly quota again. The reset restores the quota to `Unlimited` and the selected period to `Today`. It preserves the collected daily traffic, installation timestamp, selected network interface, selected historical month, and collector baseline. It does not restart or reset background traffic collection.
+The next launch asks for the monthly quota again. The reset restores the quota to `Unlimited` but preserves the selected period and historical month, as well as the collected daily traffic, installation timestamp, selected network interface, and collector baseline. It does not restart or reset background traffic collection.
 
 ## Сетевой интерфейс
 
