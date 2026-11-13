@@ -798,16 +798,23 @@ class FormattingAndPeriodTests(unittest.TestCase):
         stdscr.keypad.assert_called_once_with(True)
         stdscr.timeout.assert_called_once_with(1000)
 
-    def test_month_navigation_hotkeys_are_hidden_until_month_history_is_open(self):
+    def test_hotkeys_describe_actions_and_month_navigation_directions(self):
         for period in ("today", "7d", "month", "all"):
             line = sysmon.hotkeys_status_line(period)
+            self.assertEqual(line, "P: period   M: months   Q: quota   Esc: exit")
             self.assertNotIn("[ ]", line)
-            self.assertIn("M: months", line)
+            self.assertNotIn("L:", line)
 
         history_line = sysmon.hotkeys_status_line("month_history")
-        self.assertEqual(history_line, "M: current   [ ]: browse   Esc: back")
-        for unavailable_action in ("P:", "L:", "Q:"):
+        self.assertEqual(
+            history_line,
+            "C: current   [: prev month   ]: next month   Esc: back",
+        )
+        for unavailable_action in ("P:", "M:", "Q:", "L:"):
             self.assertNotIn(unavailable_action, history_line)
+
+        preview_line = sysmon.hotkeys_status_line("today", preview=True)
+        self.assertEqual(preview_line, "P: period   Esc: exit   PREVIEW MODE")
 
     def test_month_history_back_target_restores_previous_standard_period(self):
         for period in sysmon.DEFAULT_PERIODS:
