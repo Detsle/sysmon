@@ -191,7 +191,7 @@ class TrafficTests(unittest.TestCase):
     def test_unlimited_quota_remains_visible_with_future_start_date(self):
         self.collect_with(1000)
         future = datetime.date.today() + datetime.timedelta(days=2)
-        sysmon.update_settings(quota_start_date=future, clear_limit=True)
+        sysmon.update_settings(quota_start_date=future, limit_bytes=None, set_limit=True)
         state = self.read_state()
         line = sysmon.network_status_line(state, "today")
         self.assertIn("Traffic: -", line)
@@ -253,6 +253,22 @@ class FormattingAndPeriodTests(unittest.TestCase):
             "daily": daily,
         }
         self.assertEqual(sysmon.traffic_for_period(state, "all", today=today), 300_000_000)
+
+    def test_network_line_fits_existing_box_width(self):
+        today = datetime.date.today()
+        state = {
+            "created_at": int(datetime.datetime.combine(
+                today - datetime.timedelta(days=10), datetime.time.min
+            ).timestamp()),
+            "settings": {
+                "quota_start_date": (today - datetime.timedelta(days=5)).isoformat(),
+                "limit_bytes": 2_000_000_000_000,
+            },
+            "daily": {today.isoformat(): 125_000_000_000},
+        }
+        line = sysmon.network_status_line(state, "30d", today=today)
+        self.assertLessEqual(len(line), sysmon.BOX_WIDTH - 6)
+        self.assertIn("Quota: 125.0G / 2000.0G", line)
 
 
 if __name__ == "__main__":
