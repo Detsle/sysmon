@@ -522,12 +522,12 @@ def edit_quota_start_date(stdscr):
     except ValueError:
         current_date = datetime.date.today()
 
-    height, _ = stdscr.getmaxyx()
-    row = height - 1
-    prompt = "Quota start date (DD.MM.YYYY, day/month/year) [{}]: ".format(current_date.strftime("%d.%m.%Y"))
-    stdscr.move(row, 0)
-    stdscr.clrtoeol()
-    safe_addstr(stdscr, row, 0, prompt, max(1, len(prompt)))
+    _, width = stdscr.getmaxyx()
+    row = 19
+    start_x = (width - BOX_WIDTH) // 2 + 3
+    prompt = "Quota start date (DD.MM.YYYY) [{}]: ".format(current_date.strftime("%d.%m.%Y"))
+    safe_addstr(stdscr, row, start_x, " " * (BOX_WIDTH - 6), BOX_WIDTH - 6)
+    safe_addstr(stdscr, row, start_x, prompt, BOX_WIDTH - 6)
     stdscr.timeout(-1)
     stdscr.refresh()
     try:
@@ -536,7 +536,7 @@ def edit_quota_start_date(stdscr):
         pass
     curses.echo()
     try:
-        raw = stdscr.getstr(row, len(prompt), 10).decode("utf-8", "replace").strip()
+        raw = stdscr.getstr(row, start_x + len(prompt), 10).decode("utf-8", "replace").strip()
     finally:
         curses.noecho()
         stdscr.timeout(1000)
@@ -603,8 +603,8 @@ def main(stdscr, args):
     while True:
         height, width = stdscr.getmaxyx()
         stdscr.erase()
-        if width < BOX_WIDTH + 2 or height < 22:
-            safe_addstr(stdscr, 0, 0, "Terminal too small: need at least 72x22", max(1, width - 1))
+        if width < BOX_WIDTH + 2 or height < 21:
+            safe_addstr(stdscr, 0, 0, "Terminal too small: need at least 72x21", max(1, width - 1))
             stdscr.refresh()
             stdscr.getch()
             continue
@@ -700,7 +700,7 @@ def main(stdscr, args):
             current_period = periods[period_index]
         elif key in (ord("d"), ord("D")):
             status = edit_quota_start_date(stdscr)
-            safe_addstr(stdscr, height - 1, 0, status, width - 1)
+            safe_addstr(stdscr, 19, x + 3, status, BOX_WIDTH - 6)
             stdscr.refresh()
             time.sleep(1)
 
