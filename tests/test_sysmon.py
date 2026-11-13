@@ -242,7 +242,7 @@ class TrafficTests(unittest.TestCase):
         self.assertTrue(state["settings"]["setup_complete"])
         self.assertIn("Traffic collection is active since installation.", fake_stdout.getvalue())
         self.assertIn("Traffic and quota usage are grouped by calendar month.", fake_stdout.getvalue())
-        self.assertIn("The first accounting month may be partial.", fake_stdout.getvalue())
+        self.assertIn("If collection starts after the first day, that month is partial and marked with *.", fake_stdout.getvalue())
         self.assertEqual(
             input_mock.call_args.args[0],
             "Traffic quota in Tb [blank = Unlimited]: ",
@@ -586,9 +586,36 @@ class FormattingAndPeriodTests(unittest.TestCase):
             },
         }
         line = sysmon.network_status_line(state, "month", today=today)
-        self.assertIn("Period: 1 month", line)
-        self.assertNotIn("*", line)
+        self.assertIn("Period: 1 month*", line)
         self.assertIn("Traffic: 3.0 Gb", line)
+
+    def test_month_history_marks_only_the_partial_first_accounting_month(self):
+        install = datetime.date(2026, 1, 15)
+        state = {
+            "created_at": int(datetime.datetime.combine(install, datetime.time.min).timestamp()),
+            "accounting_started_at": int(datetime.datetime.combine(install, datetime.time.min).timestamp()),
+            "settings": {"limit_bytes": None},
+            "daily": {
+                "2026-01-15": 2_000_000_000,
+                "2026-02-01": 3_000_000_000,
+            },
+        }
+        first_month = sysmon.network_status_line(
+            state,
+            "month_history",
+            today=datetime.date(2026, 2, 15),
+            selected_month=datetime.date(2026, 1, 1),
+        )
+        following_month = sysmon.network_status_line(
+            state,
+            "month_history",
+            today=datetime.date(2026, 2, 15),
+            selected_month=datetime.date(2026, 2, 1),
+        )
+        self.assertIn("Period: Jan ’26*", first_month)
+        self.assertIn("Traffic: 2.0 Gb", first_month)
+        self.assertIn("Period: Feb ’26", following_month)
+        self.assertNotIn("*", following_month)
 
     def test_custom_date_range_is_supported(self):
         start = datetime.date(2026, 11, 1)
