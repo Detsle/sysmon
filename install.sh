@@ -74,12 +74,12 @@ install_python_runtime() {
         Linux:dnf) dnf install -y python3 python3-pip ;;
         Linux:yum) yum install -y python3 python3-pip ;;
         Linux:apk) apk add --no-cache python3 py3-pip ;;
-        Linux:pacman) pacman -Sy --needed --noconfirm python python-pip ;;
+        Linux:pacman) pacman -S --needed --noconfirm python python-pip ;;
         Linux:zypper) zypper --non-interactive install python3 python3-pip ;;
         Linux:emerge) emerge --ask=n dev-lang/python dev-python/pip ;;
         FreeBSD:pkg) pkg install -y python3 ;;
         OpenBSD:pkg_add) pkg_add -I python%3 py3-pip ;;
-        NetBSD:pkgin) pkgin -y install python314 py314-pip ;;
+        NetBSD:pkgin) pkgin -y update && pkgin -y install python314 py314-pip ;;
         NetBSD:pkg_add) pkg_add python314 py314-pip ;;
         *)
             fail "Python 3.8+ is missing and no supported package manager was detected for $OS_NAME."
@@ -247,30 +247,38 @@ install_cron_job() {
         Linux)
             if command -v rc-service >/dev/null 2>&1; then
                 command -v rc-update >/dev/null 2>&1 && rc-update add crond default >/dev/null 2>&1 || :
-                rc-service crond start >/dev/null 2>&1 || fail "Could not start crond."
+                rc-service crond status >/dev/null 2>&1 || rc-service crond start >/dev/null 2>&1 || fail "Could not start crond."
             elif command -v service >/dev/null 2>&1; then
-                service cron start >/dev/null 2>&1 || service crond start >/dev/null 2>&1 || fail "Could not start cron/crond."
+                if service cron status >/dev/null 2>&1; then
+                    :
+                elif service crond status >/dev/null 2>&1; then
+                    :
+                else
+                    service cron start >/dev/null 2>&1 || service crond start >/dev/null 2>&1 || fail "Could not start cron/crond."
+                fi
             elif [ -x /etc/init.d/cron ]; then
-                /etc/init.d/cron start >/dev/null 2>&1 || fail "Could not start cron."
+                /etc/init.d/cron status >/dev/null 2>&1 || /etc/init.d/cron start >/dev/null 2>&1 || fail "Could not start cron."
             elif [ -x /etc/init.d/crond ]; then
-                /etc/init.d/crond start >/dev/null 2>&1 || fail "Could not start crond."
+                /etc/init.d/crond status >/dev/null 2>&1 || /etc/init.d/crond start >/dev/null 2>&1 || fail "Could not start crond."
             else
                 fail "Cron job installed, but no supported cron service manager was found."
             fi
             ;;
-        FreeBSD|DragonFly)
+        FreeBSD)
             command -v sysrc >/dev/null 2>&1 && sysrc cron_enable=YES >/dev/null 2>&1 || :
-            command -v service >/dev/null 2>&1 && service cron start >/dev/null 2>&1 || fail "Could not start cron."
+            if ! service cron status >/dev/null 2>&1; then
+                service cron start >/dev/null 2>&1 || fail "Could not start cron."
+            fi
             ;;
         OpenBSD)
             command -v rcctl >/dev/null 2>&1 || fail "rcctl is unavailable; cannot enable cron."
             rcctl enable cron >/dev/null 2>&1 || fail "Could not enable cron."
-            rcctl start cron >/dev/null 2>&1 || fail "Could not start cron."
+            rcctl check cron >/dev/null 2>&1 || rcctl start cron >/dev/null 2>&1 || fail "Could not start cron."
             ;;
         NetBSD)
             if [ -x /etc/rc.d/cron ]; then
                 grep -q '^cron=YES' /etc/rc.conf 2>/dev/null || printf '\ncron=YES\n' >> /etc/rc.conf
-                /etc/rc.d/cron start >/dev/null 2>&1 || fail "Could not start cron."
+                /etc/rc.d/cron status >/dev/null 2>&1 || /etc/rc.d/cron start >/dev/null 2>&1 || fail "Could not start cron."
             else
                 fail "NetBSD cron service script was not found."
             fi
