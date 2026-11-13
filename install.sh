@@ -9,8 +9,8 @@ SYSTEMD_DIR="/etc/systemd/system"
 CRON_BEGIN="# BEGIN SYSMON COLLECTOR"
 CRON_END="# END SYSMON COLLECTOR"
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-SCRIPT_PATH="$SCRIPT_DIR/$(basename -- "$0")"
+SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
+SCRIPT_PATH="$SCRIPT_DIR/$(basename "$0")"
 OS_NAME=$(uname -s 2>/dev/null || echo unknown)
 
 say() { printf '%s\n' "$*"; }
@@ -77,7 +77,7 @@ install_python_runtime() {
         Linux:pacman) pacman -Sy --needed --noconfirm python python-pip ;;
         Linux:zypper) zypper --non-interactive install python3 python3-pip ;;
         Linux:emerge) emerge --ask=n dev-lang/python dev-python/pip ;;
-        FreeBSD:pkg|DragonFly:pkg) pkg install -y python3 ;;
+        FreeBSD:pkg) pkg install -y python3 ;;
         OpenBSD:pkg_add) pkg_add python%3 ;;
         NetBSD:pkgin) pkgin -y install python311 ;;
         NetBSD:pkg_add) pkg_add python311 ;;
@@ -183,7 +183,6 @@ Description=Run Sysmon outbound traffic collector every minute
 OnBootSec=20s
 OnUnitActiveSec=60s
 AccuracySec=5s
-Persistent=true
 Unit=sysmon-collector.service
 
 [Install]
@@ -209,9 +208,9 @@ install_cron_job() {
     fi
     command -v crontab >/dev/null 2>&1 || fail "crontab command is still unavailable."
 
-    current=$(mktemp)
-    cleaned=$(mktemp)
-    updated=$(mktemp)
+    current=$(mktemp "${TMPDIR:-/tmp}/sysmon.current.XXXXXX")
+    cleaned=$(mktemp "${TMPDIR:-/tmp}/sysmon.cleaned.XXXXXX")
+    updated=$(mktemp "${TMPDIR:-/tmp}/sysmon.updated.XXXXXX")
     trap 'rm -f "$current" "$cleaned" "$updated"' 0 HUP INT TERM
     crontab -l > "$current" 2>/dev/null || :
     awk -v begin="$CRON_BEGIN" -v end="$CRON_END" '
