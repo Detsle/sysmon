@@ -368,9 +368,9 @@ def parse_size(value):
 
 def parse_quota_size(value):
     """Parse quota input in decimal Tb; bare numbers are treated as Tb."""
-    match = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*(TB)?\s*", value, re.IGNORECASE)
+    match = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*", value)
     if not match:
-        raise ValueError("Enter quota in Tb, for example: 0.5, 4.5, or 8")
+        raise ValueError("Enter a numeric quota in Tb only, for example: 0.5, 4.5, or 8")
     amount = Decimal(match.group(1))
     if not amount.is_finite() or amount <= 0:
         raise ValueError("Quota must be greater than zero")
@@ -671,7 +671,7 @@ def prompt_first_run_setup():
         print("Traffic totals will remain unavailable until the selected date.")
 
     raw_quota = input(
-        "Traffic quota in Tb [Unlimited]: "
+        "Traffic quota in Tb [blank = Unlimited]: "
     ).strip()
     limit_bytes = None
     if raw_quota and raw_quota.lower() not in ("unlimited", "none", "off"):
@@ -761,7 +761,7 @@ def edit_traffic_quota(stdscr):
     state, error = read_state_for_ui()
     if error or state is None:
         return "Traffic data unavailable"
-    prompt = "Quota in Tb [Unlimited]: "
+    prompt = "Quota in Tb [blank = Unlimited]: "
     raw = read_hotkey_input(stdscr, prompt, 16)
     limit_bytes = None
     error_message = None
@@ -966,7 +966,7 @@ def build_parser():
     parser.add_argument(
         "--set-limit",
         metavar="TB",
-        help="set outbound traffic quota in decimal Tb, e.g. 0.5, 4.5, or 8",
+        help="set outbound traffic quota in decimal Tb (numeric value only), e.g. 0.5, 4.5, or 8",
     )
     parser.add_argument("--clear-limit", action="store_true", help="set the traffic quota to Unlimited")
     parser.add_argument("--quota-start-date", metavar="DD.MM.YYYY", help="set the quota calculation start date")
