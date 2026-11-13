@@ -70,7 +70,7 @@ Hotkeys:
 - `D` — change the Traffic start date.
 - `L` — change the quota in GB or set it to `Unlimited`.
 
-Traffic and quota values are displayed in decimal GB with one fractional digit, matching the Memory/Disk value style (for example, `0.1G`). When the quota is unlimited, `Quota: Unlimited` remains visible while traffic collection continues.
+Traffic and quota values are displayed in decimal GB with one fractional digit, matching the Memory/Disk value style (for example, `0.1G`). Non-zero amounts below 0.05 GB are shown as `<0.1G` rather than being rounded down to `0.0G`. When the quota is unlimited, `Quota: Unlimited` remains visible while traffic collection continues.
 
 Optional administrative commands:
 
