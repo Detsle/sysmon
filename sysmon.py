@@ -824,12 +824,17 @@ def cpu_status_line(cpu, bar):
 
 
 def standard_memory_capacity_bytes(total_bytes):
-    """Round a binary OS memory total to the nearest nominal 2^n GiB capacity."""
+    """Use a nominal 2^n GiB tier only when the actual value is close to it."""
     if total_bytes <= 0:
         return total_bytes
     gib = total_bytes / float(1024 ** 3)
-    exponent = max(0, int(math.floor(math.log(gib, 2) + 0.5)))
-    return int((2 ** exponent) * (1024 ** 3))
+    tiers = (1, 2, 4, 8, 16, 32, 64, 128, 256)
+    nearest_tier = min(tiers, key=lambda tier: abs(gib - tier))
+    if abs(gib - nearest_tier) / nearest_tier <= 0.08:
+        display_gib = nearest_tier
+    else:
+        display_gib = max(1, int(math.floor(gib + 0.5)))
+    return int(display_gib * (1024 ** 3))
 
 
 def memory_status_line(memory_used, memory_total, swap_used, swap_total):
