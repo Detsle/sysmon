@@ -525,12 +525,14 @@ def edit_quota_start_date(stdscr):
     stdscr.move(row, 0)
     stdscr.clrtoeol()
     safe_addstr(stdscr, row, 0, prompt, max(1, len(prompt)))
+    stdscr.timeout(-1)
     stdscr.refresh()
     curses.echo()
     try:
         raw = stdscr.getstr(row, len(prompt), 10).decode("utf-8", "replace").strip()
     finally:
         curses.noecho()
+        stdscr.timeout(1000)
     if not raw:
         return "Quota start date unchanged"
     try:
