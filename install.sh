@@ -301,6 +301,7 @@ say "[7/8] Verifying installation"
 
 say "[8/8] Installation complete"
 say "Run: sysmon"
+say "Traffic collection started during installation."
+say "First launch will ask for the quota start date and traffic limit."
 say "Traffic data: $DATA_DIR/traffic.json"
-say "Set a traffic quota: sysmon --set-limit 2TB"
 say "Set a specific interface: sysmon --interface eth0"
