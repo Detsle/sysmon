@@ -600,7 +600,7 @@ def edit_quota_start_date(stdscr):
     if error or state is None:
         return "Traffic data unavailable"
     current_date = tracking_start_date(state)
-    prompt = "Start date DD.MM.YYYY [{}]: ".format(current_date.strftime("%d.%m.%Y"))
+    prompt = "Traffic start date DD.MM.YYYY [{}]: ".format(current_date.strftime("%d.%m.%Y"))
     raw = read_hotkey_input(stdscr, prompt, 10)
     if not raw:
         return "Start date unchanged"
@@ -766,7 +766,7 @@ def main(stdscr, args):
         safe_addstr(stdscr, 15, x + 3, network_line, BOX_WIDTH - 6)
 
         draw_box(stdscr, " Hotkeys ", 17, 3, BOX_WIDTH, x)
-        safe_addstr(stdscr, 18, x + 3, "P: period   D: start date   L: quota   Q: quit", BOX_WIDTH - 6)
+        safe_addstr(stdscr, 18, x + 3, "P: period   D: traffic start date   L: quota   Q: quit", BOX_WIDTH - 6)
 
         stdscr.noutrefresh()
         curses.doupdate()
