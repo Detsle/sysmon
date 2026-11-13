@@ -878,6 +878,11 @@ def selected_period_text(
     return PERIOD_LABELS[period]
 
 
+def month_history_return_period(previous_period):
+    """Return to the standard period that was active before opening month history."""
+    return previous_period if previous_period in DEFAULT_PERIODS else DEFAULT_PERIODS[0]
+
+
 def hotkeys_status_line(period, preview=False):
     """Show only month-navigation and back controls while monthly history is active."""
     if preview:
@@ -919,7 +924,7 @@ def main(stdscr, args):
     periods = list(DEFAULT_PERIODS)
     current_period = args.period or "today"
     period_index = periods.index(current_period) if current_period in periods else -1
-    return_period = current_period if current_period in periods else "today"
+    return_period = month_history_return_period(current_period)
     selected_month = args.selected_month or datetime.date.today().replace(day=1)
     custom_from = parse_display_date(args.from_date) if args.from_date else None
     custom_to = parse_display_date(args.to_date) if args.to_date else None
@@ -1023,7 +1028,7 @@ def main(stdscr, args):
         key = stdscr.getch()
         if key == 27:
             if current_period == "month_history":
-                current_period = return_period
+                current_period = month_history_return_period(return_period)
                 period_index = periods.index(current_period)
                 hotkey_status = None
                 hotkey_status_until = 0.0
