@@ -61,7 +61,7 @@ sysmon --from-date 2026-11-01 --to-date 2026-11-13
 On the first launch, Sysmon asks for:
 
 - Traffic start date in `DD.MM.YYYY` format (day/month/year); default: the current date. Blank or invalid input uses today's date.
-- Traffic quota in decimal Gb; default: `Unlimited`. Blank or invalid input sets `Unlimited`.
+- Traffic quota; default: `Unlimited`. A bare number is interpreted as decimal Gb, and an explicit `Gb` or `Tb` suffix is accepted (for example, `8000` or `8Tb`). Blank or invalid input sets `Unlimited`.
 
 The start date cannot be earlier than the installation date. A future start date is allowed: Traffic and a configured Quota usage display `-` until that date. The same start date is used to filter both the selected Traffic period and accumulated Quota usage. Invalid-input messages remain visible for five seconds.
 
@@ -72,12 +72,12 @@ Hotkeys:
 
 The start date applies to both Traffic and Quota; they cannot be configured independently. Blank date input sets today's date. Blank quota input sets `Unlimited`. Invalid date input falls back to today's date, and invalid quota input falls back to `Unlimited`. Error messages remain visible for five seconds.
 
-Traffic, Memory, Disk, and Quota values use the requested `Gb`, `Mb`, and `Tb` labels, with a space before each unit. These labels are visual abbreviations only: Sysmon continues to count bytes, not bits. Values below 1,024 Gb are shown with one decimal place; at 1,024 Gb and above they are converted to Tb using 1,024 as the display divisor and shown with two decimal places. Memory and Disk retain binary byte conversion; Traffic and Quota retain decimal byte conversion. Used/total pairs display one shared unit at the end and use `|` as the separator. Disk I/O retains `Mb/s`, while the read/write separator is `|`. When the quota is `Unlimited`, the Quota field is hidden entirely while traffic collection continues. A 100,000 Gb preview is shown as 97.66 Tb and fits both Today and 30 days in the existing Network row.
+Traffic, Memory, Disk, and Quota values use the requested `Gb`, `Mb`, and `Tb` labels, with a space before each unit. These labels are visual abbreviations only: Sysmon continues to count bytes, not bits. Traffic and Quota use decimal conversion: 1,000 Gb = 1 Tb, so a quota entered as `8000` or `8000 Gb` is stored as 8 Tb. A `Tb` suffix can also be entered directly (for example, `8Tb`). Values below 1,000 Gb are shown with one decimal place; at 1,000 Gb and above they are converted to Tb and shown with two decimal places. Memory and Disk retain binary byte conversion; Used is shown with one decimal place and Total is rounded to a whole Gb. Used/total pairs display one shared unit at the end and use `|` as the separator. Disk I/O retains `Mb/s`, while the read/write separator is `|`. When the quota is `Unlimited`, the Quota field is hidden entirely while traffic collection continues. A 100,000 Gb preview is shown as 100.00 Tb and fits both Today and 30 days in the existing Network row.
 
 Optional administrative commands:
 
 ```sh
-sysmon --set-limit 2000Gb
+sysmon --set-limit 8000
 sysmon --quota-start-date 13.11.2026
 sysmon --clear-limit
 ```
