@@ -416,6 +416,7 @@ class FormattingAndPeriodTests(unittest.TestCase):
     def test_gigabytes_convert_to_terabytes_at_1024_gb(self):
         self.assertEqual(sysmon.format_gigabytes(1_023_900_000_000), "1023.9 Gb")
         self.assertEqual(sysmon.format_gigabytes(1_024_000_000_000), "1.00 Tb")
+        self.assertEqual(sysmon.format_gigabytes(1_136_640_000_000), "1.11 Tb")
         self.assertEqual(
             sysmon.format_gigabyte_pair(1_024_000_000_000, 5_500_000_000),
             "1.00 | 0.01 Tb",
