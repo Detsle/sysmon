@@ -800,7 +800,7 @@ MONTH_ABBREVIATIONS = (
 
 def month_label(value):
     """Return a stable English month/year label independent of the server locale."""
-    return "{} {}".format(MONTH_ABBREVIATIONS[value.month - 1], value.year)
+    return "{} ’{:02d}".format(MONTH_ABBREVIATIONS[value.month - 1], value.year % 100)
 
 
 def selected_period_text(
@@ -924,7 +924,7 @@ def main(stdscr, args):
             BOX_WIDTH - 6,
         )
 
-        draw_box(stdscr, " Network ", 14, 3, BOX_WIDTH, x)
+        draw_box(stdscr, " Network (* = partial month) ", 14, 3, BOX_WIDTH, x)
         if args.preview_network is not None:
             try:
                 network_line = preview_network_status_line(current_period, args.preview_network)
