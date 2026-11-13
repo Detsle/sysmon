@@ -476,6 +476,10 @@ class FormattingAndPeriodTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             sysmon.parse_quota_size("8000Gb")
         with self.assertRaises(ValueError):
+            sysmon.parse_quota_size("0")
+        with self.assertRaises(ValueError):
+            sysmon.parse_quota_size("0.0000000000001")
+        with self.assertRaises(ValueError):
             sysmon.parse_quota_size("invalid")
 
     def test_quota_limit_is_shown_without_trailing_decimal_zeros(self):
