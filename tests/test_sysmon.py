@@ -283,13 +283,17 @@ class TrafficTests(unittest.TestCase):
 
     def test_cli_set_limit_bare_number_defaults_to_tb(self):
         self.collect_with(1000)
-        for quota_input in ("8", "8Tb"):
+        for quota_input, expected_bytes in (
+            ("8", 8_000_000_000_000),
+            ("8Tb", 8_000_000_000_000),
+            ("0.5", 500_000_000_000),
+        ):
             with self.subTest(quota_input=quota_input), \
                  mock.patch.object(sysmon.sys, "argv", ["sysmon", "--set-limit", quota_input]), \
                  mock.patch("builtins.print"):
                 self.assertEqual(sysmon.main_cli(), 0)
             state = self.read_state()
-            self.assertEqual(state["settings"]["limit_bytes"], 8_000_000_000_000)
+            self.assertEqual(state["settings"]["limit_bytes"], expected_bytes)
 
 
     def test_start_date_cannot_be_earlier_than_installation(self):
@@ -486,6 +490,12 @@ class FormattingAndPeriodTests(unittest.TestCase):
         self.assertEqual(
             sysmon.format_quota_pair(0, 500_000_000_000),
             "0.00 | 0.5 Tb",
+        )
+
+    def test_tiny_existing_quota_does_not_display_as_zero_tb(self):
+        self.assertEqual(
+            sysmon.format_quota_pair(0, 2_000_000_000),
+            "0.00 | 0.00 Tb",
         )
 
     def test_format_bytes_uses_requested_mb_gb_tb_casing(self):
