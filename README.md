@@ -51,7 +51,7 @@ sysmon
 Для произвольного календарного диапазона:
 
 ```sh
-sysmon --from-date 2026-11-01 --to-date 2026-11-13
+sysmon --from-date 01.11.26 --to-date 13.11.26
 ```
 
 Даты включаются в расчёт целиком.
@@ -60,7 +60,7 @@ sysmon --from-date 2026-11-01 --to-date 2026-11-13
 
 On the first launch, Sysmon asks for:
 
-- Traffic start date in `DD.MM.YYYY` format (day/month/year); default: the current date. Blank or invalid input uses today's date.
+- Traffic start date input uses `DD.MM.YY` format (day/month/year); default: the current date. Dates displayed by Sysmon use `DD.MM.YYYY`. Blank or invalid input uses today's date.
 - Traffic quota in decimal Tb; enter numbers only, such as `0.5`, `4.5`, or `8`. Do not add a unit suffix. Leaving the quota field blank applies `Unlimited`. Invalid input also falls back to `Unlimited`.
 
 The start date cannot be earlier than the installation date. A future start date is allowed: Traffic and a configured Quota usage display `-` until that date. The same start date is used to filter both the selected Traffic period and accumulated Quota usage. Invalid-input messages remain visible for five seconds.
@@ -78,7 +78,7 @@ Optional administrative commands:
 
 ```sh
 sysmon --set-limit 8
-sysmon --quota-start-date 13.11.2026
+sysmon --quota-start-date 13.11.26
 sysmon --clear-limit
 ```
 
