@@ -502,7 +502,7 @@ def quota_text(state, today=None):
     today = today or datetime.date.today()
     start = tracking_start_date(state)
     if today < start:
-        return "Quota: -/{}GB".format(format_gigabytes(limit))
+        return "Quota: -/{}".format(format_gigabytes(limit))
     used = sum_range(state.get("daily", {}), start, today)
     return "Quota: {}/{}".format(format_gigabytes(used), format_gigabytes(limit))
 
@@ -661,8 +661,8 @@ def edit_quota_start_date(stdscr):
                     )
                 )
             selected = entered_date
-        except ValueError as exc:
-            error_message = "Invalid date: {}. Using today.".format(exc)
+        except ValueError:
+            error_message = "Invalid date; using today's date"
     try:
         update_settings(quota_start_date=selected, setup_complete=True)
         if error_message:
