@@ -138,18 +138,24 @@ def bsd_default_interface():
     return None
 
 
+def is_virtual_interface(name):
+    """Identify common tunnel, loopback, bridge and container interface names."""
+    lowered = name.lower()
+    excluded_prefixes = (
+        "lo", "tun", "tap", "wg", "docker", "br", "veth", "virbr",
+        "vmnet", "vboxnet", "utun", "gif", "pflog", "ppp", "tailscale", "zt",
+        "sit", "ip6tnl", "ifb",
+    )
+    return lowered.startswith(excluded_prefixes)
+
+
 def fallback_interface(counters):
     """Use a sole active, addressed non-loopback NIC; never guess among several NICs."""
     stats = psutil.net_if_stats() or {}
     addrs = psutil.net_if_addrs() or {}
-    excluded_prefixes = (
-        "lo", "tun", "tap", "wg", "docker", "br-", "veth", "virbr",
-        "vmnet", "vboxnet", "utun", "gif", "pflog",
-    )
     candidates = []
     for name in counters:
-        lowered = name.lower()
-        if lowered.startswith(excluded_prefixes):
+        if is_virtual_interface(name):
             continue
         info = stats.get(name)
         if info is not None and not info.isup:
@@ -170,9 +176,9 @@ def detect_interface(counters):
     interface = None
     if system.startswith("linux"):
         interface = linux_default_interface()
-    elif system.startswith(("freebsd", "openbsd", "netbsd", "dragonfly")):
+    elif system.startswith(("freebsd", "openbsd", "netbsd")):
         interface = bsd_default_interface()
-    if interface in counters:
+    if interface in counters and not is_virtual_interface(interface):
         return interface
     return fallback_interface(counters)
 
