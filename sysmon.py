@@ -890,7 +890,7 @@ def hotkeys_status_line(period, preview=False):
     if preview:
         return "P: period   Esc: exit   PREVIEW MODE"
     if period == "month_history":
-        return "C: current   [: prev month   ]: next month   Esc: back"
+        return "C: current   [: previous month   ]: next month   Esc: back"
     return "P: period   M: months   Q: quota   Esc: exit"
 
 
