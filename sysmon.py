@@ -950,7 +950,11 @@ def build_parser():
     parser.add_argument("--period", choices=DEFAULT_PERIODS, default="7d", help="initial traffic period in the UI")
     parser.add_argument("--from-date", help="custom period start date (YYYY-MM-DD)")
     parser.add_argument("--to-date", help="custom period end date (YYYY-MM-DD)")
-    parser.add_argument("--set-limit", metavar="SIZE", help="set outbound traffic quota, e.g. 2000Gb")
+    parser.add_argument(
+        "--set-limit",
+        metavar="SIZE",
+        help="set outbound traffic quota, e.g. 2000Gb or 2Tb; a bare number means Gb",
+    )
     parser.add_argument("--clear-limit", action="store_true", help="set the traffic quota to Unlimited")
     parser.add_argument("--quota-start-date", metavar="DD.MM.YYYY", help="set the quota calculation start date")
     parser.add_argument(
@@ -980,8 +984,11 @@ def main_cli():
 
     if args.set_limit and args.clear_limit:
         parser.error("--set-limit and --clear-limit cannot be used together")
-    if args.set_limit and parse_size(args.set_limit) <= 0:
-        parser.error("--set-limit must be greater than zero")
+    if args.set_limit:
+        try:
+            parse_quota_size(args.set_limit)
+        except ValueError as exc:
+            parser.error("invalid --set-limit: {}".format(exc))
 
     preview_network_bytes = None
     if args.preview_network is not None:
@@ -1024,7 +1031,7 @@ def main_cli():
         return 0
 
     if any((args.set_limit is not None, args.clear_limit, args.quota_start_date is not None, args.interface is not None)):
-        limit_bytes = parse_size(args.set_limit) if args.set_limit else None
+        limit_bytes = parse_quota_size(args.set_limit) if args.set_limit else None
         interface = args.interface
         if interface is not None and not interface:
             parser.error("--interface must be a name or 'auto'")
