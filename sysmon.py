@@ -469,10 +469,17 @@ def _scaled_gigabyte_values(values, binary=False):
     return gigabytes, "Gb", 1
 
 
+def _format_scaled_amount(value, precision):
+    """Round display values half-up, matching Sysmon's previous one-digit behavior."""
+    factor = 10 ** precision
+    rounded = math.floor(value * factor + 0.5) / float(factor)
+    return "{:.{}f}".format(rounded, precision)
+
+
 def format_gigabytes(value, binary=False):
     """Format one byte count as Gb or Tb, with a space before the unit."""
     values, unit, precision = _scaled_gigabyte_values([value], binary=binary)
-    return "{:.{}f} {}".format(values[0], precision, unit)
+    return "{} {}".format(_format_scaled_amount(values[0], precision), unit)
 
 
 def format_gigabyte_pair(first_bytes, second_bytes, binary=False):
@@ -480,8 +487,8 @@ def format_gigabyte_pair(first_bytes, second_bytes, binary=False):
     values, unit, precision = _scaled_gigabyte_values(
         [first_bytes, second_bytes], binary=binary
     )
-    first = "-" if values[0] is None else "{:.{}f}".format(values[0], precision)
-    second = "-" if values[1] is None else "{:.{}f}".format(values[1], precision)
+    first = "-" if values[0] is None else _format_scaled_amount(values[0], precision)
+    second = "-" if values[1] is None else _format_scaled_amount(values[1], precision)
     return "{} | {} {}".format(first, second, unit)
 
 
