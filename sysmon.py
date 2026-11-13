@@ -356,7 +356,7 @@ def collect_traffic():
 def parse_size(value):
     match = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*(B|KB|MB|GB|TB|KIB|MIB|GIB|TIB)?\s*", value, re.IGNORECASE)
     if not match:
-        raise SysmonError("Invalid size. Examples: 500GB, 2TB, 1.5TiB")
+        raise SysmonError("Invalid size. Examples: 500Gb, 2Tb, 1.5Tib")
     number = float(match.group(1))
     unit = (match.group(2) or "B").upper()
     powers_1000 = {"B": 1, "KB": 1000, "MB": 1000 ** 2, "GB": 1000 ** 3, "TB": 1000 ** 4}
@@ -727,7 +727,7 @@ def edit_quota_start_date(stdscr):
 
 
 def edit_traffic_quota(stdscr):
-    """Change the outbound quota in decimal GB; blank or invalid input means Unlimited."""
+    """Change the outbound quota in decimal Gb; blank or invalid input means Unlimited."""
     state, error = read_state_for_ui()
     if error or state is None:
         return "Traffic data unavailable"
