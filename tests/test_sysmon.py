@@ -183,7 +183,7 @@ class TrafficTests(unittest.TestCase):
         self.assertIsNone(state["settings"]["limit_bytes"])
         self.assertTrue(state["settings"]["setup_complete"])
         quota_prompt = input_mock.call_args_list[1].args[0]
-        self.assertIn("blank = Unlimited", quota_prompt)
+        self.assertEqual(quota_prompt, "Traffic quota in Tb [blank = Unlimited]: ")
 
     def test_first_run_setup_accepts_custom_date_and_quota_tb(self):
         self.collect_with(1000)
@@ -281,7 +281,7 @@ class TrafficTests(unittest.TestCase):
         state = self.read_state()
         self.assertIsNone(state["settings"]["limit_bytes"])
         self.assertIn("Invalid quota", status)
-        self.assertIn("blank = Unlimited", read_input.call_args.args[1])
+        self.assertEqual(read_input.call_args.args[1], "Traffic quota in Tb [blank = Unlimited]: ")
 
     def test_hotkey_quota_accepts_numeric_decimal_tb(self):
         self.collect_with(1000)
