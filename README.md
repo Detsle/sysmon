@@ -17,7 +17,7 @@
 Предварительное условие — установленный `git`, поскольку он нужен для клонирования репозитория:
 
 ```sh
-git clone https://github.com/Detsle/sysmon.git && cd sysmon && sh install.sh
+git clone --branch development --single-branch https://github.com/Detsle/sysmon.git && cd sysmon && sh install.sh
 ```
 
 Установщик:
