@@ -662,6 +662,18 @@ def network_status_line(
             selected_month=selected_month,
         )
         traffic_value = "-" if traffic is None else format_gigabytes(traffic)
+
+    if period in ("month", "month_history"):
+        collection_start = data_start_date(state)
+        displayed_month = (
+            selected_month if period == "month_history" else today.replace(day=1)
+        )
+        if (
+            collection_start.day > 1
+            and collection_start.replace(day=1) == displayed_month.replace(day=1)
+        ):
+            period_label += "*"
+
     fields = [
         "Period: {}".format(period_label),
         "Traffic: {}".format(traffic_value),
@@ -743,7 +755,7 @@ def prompt_first_run_setup():
     else:
         print("Traffic collection is active since installation.")
     print("Traffic and quota usage are grouped by calendar month.")
-    print("The first accounting month may be partial.")
+    print("If collection starts after the first day, that month is partial and marked with *.")
     print("")
 
     raw_quota = input(
