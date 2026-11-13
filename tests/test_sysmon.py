@@ -366,6 +366,40 @@ class FormattingAndPeriodTests(unittest.TestCase):
         }
         self.assertEqual(sysmon.traffic_for_period(state, "all", today=today), 300_000_000)
 
+    def test_preview_network_line_fits_100_tb_in_existing_box(self):
+        value = sysmon.parse_size("100000GB")
+        line = sysmon.preview_network_status_line("30d", value)
+        self.assertEqual(
+            line,
+            "Period: 30d  Traffic: 100000.0GB  Quota: 100000.0GB / 100000.0GB",
+        )
+        self.assertEqual(len(line), sysmon.BOX_WIDTH - 6)
+
+    def test_preview_network_parser_accepts_size_without_modifying_data(self):
+        self.collect_with(123456)
+        before = sysmon.DATA_FILE.read_bytes()
+        args = sysmon.build_parser().parse_args(["--preview-network", "100000GB"])
+        self.assertEqual(sysmon.parse_size(args.preview_network), 100_000_000_000_000)
+        self.assertEqual(sysmon.DATA_FILE.read_bytes(), before)
+
+    def test_preview_network_mode_skips_first_run_setup_and_preserves_json(self):
+        self.collect_with(123456)
+        before = sysmon.DATA_FILE.read_bytes()
+        captured = {}
+
+        def fake_wrapper(callback, args):
+            captured["preview_network"] = args.preview_network
+
+        with mock.patch.object(sysmon.sys, "argv", ["sysmon", "--preview-network", "100000GB"]), \
+             mock.patch.object(sysmon, "prompt_first_run_setup") as setup, \
+             mock.patch.object(sysmon.curses, "wrapper", side_effect=fake_wrapper):
+            result = sysmon.main_cli()
+
+        self.assertEqual(result, 0)
+        self.assertEqual(captured["preview_network"], 100_000_000_000_000)
+        setup.assert_not_called()
+        self.assertEqual(sysmon.DATA_FILE.read_bytes(), before)
+
     def test_network_line_fits_existing_box_width(self):
         today = datetime.date.today()
         state = {
