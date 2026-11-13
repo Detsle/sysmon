@@ -588,6 +588,10 @@ def network_status_line(state, period, today=None, custom_from=None, custom_to=N
     )
     traffic_value = "-" if traffic is None else format_gigabytes(traffic)
     period_label = selected_period_text(period, custom_from, custom_to)
+    if period in ("month", "last_month"):
+        period_start, period_end = period_bounds(period, today=today)
+        if tracking_start_date(state) > period_start:
+            period_label += "*"
     if period == "custom":
         period_label = "Custom"
     fields = [
@@ -603,6 +607,8 @@ def network_status_line(state, period, today=None, custom_from=None, custom_to=N
             "today": "Today",
             "7d": "7 days",
             "30d": "30 days",
+            "month": "Month",
+            "last_month": "Last month",
             "all": "All time",
             "custom": "Custom",
         }
@@ -617,6 +623,8 @@ def preview_network_status_line(period, value_bytes):
         "today": "Today",
         "7d": "7 days",
         "30d": "30 days",
+        "month": "Month",
+        "last_month": "Last month",
         "all": "All time",
         "custom": "Custom",
     }
@@ -756,7 +764,7 @@ def edit_quota_start_date(stdscr):
             if entered_date < installed_at:
                 raise ValueError(
                     "Date cannot be earlier than installation ({})".format(
-                        installed_at.strftime("%d.%m.%Y")
+                        installed_at.strftime("%d-%m-%y")
                     )
                 )
             selected = entered_date
@@ -768,7 +776,7 @@ def edit_quota_start_date(stdscr):
             return error_message
         if selected > today:
             return "Start date updated; tracking starts {}".format(selected.strftime("%d-%m-%y"))
-        return "Start date set to {}".format(selected.strftime("%d.%m.%Y"))
+        return "Start date set to {}".format(selected.strftime("%d-%m-%y"))
     except (OSError, SysmonError) as exc:
         return "Cannot save start date: {}".format(exc)
 
@@ -831,8 +839,18 @@ def cpu_status_line(cpu, bar):
     return "Usage: {}{}   Cores: {}".format(percentage, padding, bar)
 
 
+def standard_memory_capacity_bytes(total_bytes):
+    """Round installed RAM to the nearest conventional power-of-two GiB tier."""
+    if total_bytes <= 0:
+        return total_bytes
+    gib = total_bytes / float(1024 ** 3)
+    exponent = max(0, int(math.floor(math.log(gib, 2) + 0.5)))
+    return int((2 ** exponent) * (1024 ** 3))
+
+
 def memory_status_line(memory_used, memory_total, swap_used, swap_total):
-    """Render memory and swap pairs with one shared unit per pair."""
+    """Render RAM capacity at a standard tier and keep actual usage unchanged."""
+    memory_total = standard_memory_capacity_bytes(memory_total)
     return "Used: {}   Swap: {}".format(
         format_gigabyte_pair(memory_used, memory_total, binary=True, integer_total=True),
         format_gigabyte_pair(swap_used, swap_total, binary=True, integer_total=True),
@@ -854,7 +872,7 @@ def main(stdscr, args):
     stdscr.timeout(1000)
 
     periods = list(DEFAULT_PERIODS)
-    current_period = args.period
+    current_period = args.period or "today"
     period_index = periods.index(current_period) if current_period in periods else -1
     custom_from = parse_display_date(args.from_date) if args.from_date else None
     custom_to = parse_display_date(args.to_date) if args.to_date else None
@@ -960,6 +978,13 @@ def main(stdscr, args):
         if key in (ord("p"), ord("P")):
             period_index = (period_index + 1) % len(periods)
             current_period = periods[period_index]
+            if args.preview_network is None:
+                try:
+                    update_settings(selected_period=current_period)
+                    hotkey_status = "Period saved: {}".format(PERIOD_LABELS[current_period])
+                except (OSError, SysmonError) as exc:
+                    hotkey_status = "Cannot save period: {}".format(exc)
+                hotkey_status_until = time.monotonic() + 5.0
         elif key in (ord("d"), ord("D")) and args.preview_network is None:
             hotkey_status = edit_quota_start_date(stdscr)
             hotkey_status_until = time.monotonic() + 5.0
@@ -1047,6 +1072,7 @@ def main_cli():
             args.interface is not None,
             args.from_date is not None,
             args.to_date is not None,
+            args.period is not None,
         )):
             parser.error("--reset-setup cannot be combined with other options")
         reset_first_run_setup()
@@ -1060,7 +1086,7 @@ def main_cli():
         ))
         return 0
 
-    if any((args.set_limit is not None, args.clear_limit, args.quota_start_date is not None, args.interface is not None)):
+    if any((args.set_limit is not None, args.clear_limit, args.quota_start_date is not None, args.interface is not None, args.period is not None)): 
         limit_bytes = parse_quota_size(args.set_limit) if args.set_limit else None
         interface = args.interface
         if interface is not None and not interface:
@@ -1077,7 +1103,7 @@ def main_cli():
                 if quota_start_date < installed_at:
                     raise ValueError(
                         "Date cannot be earlier than installation ({})".format(
-                            installed_at.strftime("%d.%m.%Y")
+                            installed_at.strftime("%d-%m-%y")
                         )
                     )
             except ValueError as exc:
@@ -1088,6 +1114,7 @@ def main_cli():
             set_limit=args.set_limit is not None,
             clear_limit=args.clear_limit,
             quota_start_date=quota_start_date,
+            selected_period=args.period if args.period in DEFAULT_PERIODS else None,
             setup_complete=(args.set_limit is not None or args.clear_limit or quota_start_date is not None),
         )
         print("Sysmon settings updated.")
@@ -1102,8 +1129,17 @@ def main_cli():
         except KeyboardInterrupt:
             print("\\nSetup cancelled. Run sysmon again to complete first-run setup.")
             return 0
+        if args.period is None:
+            state = load_state()
+            args.period = (
+                state.get("settings", {}).get("selected_period", "today")
+                if state else "today"
+            )
+        elif args.period in DEFAULT_PERIODS:
+            update_settings(selected_period=args.period)
     else:
         args.preview_network = preview_network_bytes
+        args.period = args.period or "today"
 
     try:
         curses.wrapper(main, args)
