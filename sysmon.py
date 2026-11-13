@@ -29,6 +29,7 @@ DEFAULT_PERIODS = ("today", "7d", "month", "all")
 SAVED_PERIODS = DEFAULT_PERIODS + ("month_history",)
 NETWORK_BOX_TITLE = " Network "
 HOTKEY_ESCAPE_DELAY_MS = 100
+HOTKEY_STATUS_DURATION_SECONDS = 3.0
 QUOTA_INPUT_PROMPT = "Traffic quota in Tb [1, 1.1; blank=Unlimited]: "
 TRAFFIC_COLLECTOR_INTRODUCED_AT = 1794533947  # 2026-11-13 01:39:07 UTC
 PERIOD_LABELS = {
@@ -1049,7 +1050,7 @@ def main(stdscr, args):
                     update_settings(selected_period=current_period)
                 except (OSError, SysmonError) as exc:
                     hotkey_status = "Cannot return to previous screen: {}".format(exc)
-                    hotkey_status_until = time.monotonic() + 5.0
+                    hotkey_status_until = time.monotonic() + HOTKEY_STATUS_DURATION_SECONDS
             else:
                 break
         elif key in (ord("p"), ord("P")) and current_period != "month_history":
@@ -1062,7 +1063,7 @@ def main(stdscr, args):
                     update_settings(selected_period=current_period)
                 except (OSError, SysmonError) as exc:
                     hotkey_status = "Cannot save period: {}".format(exc)
-                    hotkey_status_until = time.monotonic() + 5.0
+                    hotkey_status_until = time.monotonic() + HOTKEY_STATUS_DURATION_SECONDS
         elif key in (ord("m"), ord("M")) and args.preview_network is None and current_period != "month_history":
             return_period = current_period
             current_period = "month_history"
@@ -1073,7 +1074,7 @@ def main(stdscr, args):
                 update_settings(selected_period=current_period, selected_month=selected_month)
             except (OSError, SysmonError) as exc:
                 hotkey_status = "Cannot save month: {}".format(exc)
-                hotkey_status_until = time.monotonic() + 5.0
+                hotkey_status_until = time.monotonic() + HOTKEY_STATUS_DURATION_SECONDS
         elif key in (ord("c"), ord("C")) and args.preview_network is None and current_period == "month_history":
             selected_month = datetime.date.today().replace(day=1)
             hotkey_status = None
@@ -1082,7 +1083,7 @@ def main(stdscr, args):
                 update_settings(selected_period="month_history", selected_month=selected_month)
             except (OSError, SysmonError) as exc:
                 hotkey_status = "Cannot select current month: {}".format(exc)
-                hotkey_status_until = time.monotonic() + 5.0
+                hotkey_status_until = time.monotonic() + HOTKEY_STATUS_DURATION_SECONDS
         elif key in (ord("["), ord("]")) and args.preview_network is None and current_period == "month_history":
             offset = -1 if key == ord("[") else 1
             target_month = shift_calendar_month(selected_month, offset)
@@ -1091,7 +1092,7 @@ def main(stdscr, args):
             latest_month = datetime.date.today().replace(day=1)
             if target_month < earliest_month or target_month > latest_month:
                 hotkey_status = "No collected data for that month"
-                hotkey_status_until = time.monotonic() + 5.0
+                hotkey_status_until = time.monotonic() + HOTKEY_STATUS_DURATION_SECONDS
             else:
                 selected_month = target_month
                 hotkey_status = None
@@ -1100,10 +1101,10 @@ def main(stdscr, args):
                     update_settings(selected_period="month_history", selected_month=selected_month)
                 except (OSError, SysmonError) as exc:
                     hotkey_status = "Cannot save month: {}".format(exc)
-                    hotkey_status_until = time.monotonic() + 5.0
+                    hotkey_status_until = time.monotonic() + HOTKEY_STATUS_DURATION_SECONDS
         elif key in (ord("q"), ord("Q")) and args.preview_network is None and current_period != "month_history":
             hotkey_status = edit_traffic_quota(stdscr)
-            hotkey_status_until = time.monotonic() + 5.0
+            hotkey_status_until = time.monotonic() + HOTKEY_STATUS_DURATION_SECONDS
 
 
 def build_parser():
