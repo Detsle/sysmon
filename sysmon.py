@@ -748,7 +748,7 @@ def edit_traffic_quota(stdscr):
     state, error = read_state_for_ui()
     if error or state is None:
         return "Traffic data unavailable"
-    prompt = "Quota (Gb/Tb) [Gb; blank=Unlimited]: "
+    prompt = "Quota (Gb/Tb; default Gb) [Unlimited]: "
     raw = read_hotkey_input(stdscr, prompt, 16)
     limit_bytes = None
     error_message = None
