@@ -41,10 +41,13 @@ sysmon
 
 В блоке **Network** одной строкой отображаются период, исходящий трафик и квота. Клавиши:
 
-- `P` — переключить период (Today / 7 days / 30 days / Month / Last month / All time); выбранный период сохраняется при выходе.
-- `D` — изменить дату начала расчёта квоты.
-- `L` — изменить квоту в Tb или выбрать `Unlimited`.
+- `P` — переключать Today / 7 days / 30 days / Month / Last month / All time.
+- `M` — открыть историю по календарным месяцам.
+- `[` / `]` — перейти на предыдущий / следующий месяц.
+- `L` — изменить месячный лимит в Tb или выбрать `Unlimited`.
 - `Q` — выйти.
+
+Выбранный период и месяц истории сохраняются при выходе.
 
 Блок **Hotkeys** постоянно показывает эти сочетания клавиш.
 
@@ -56,29 +59,31 @@ sysmon --from-date 01-11-26 --to-date 13-11-26
 
 Даты включаются в расчёт целиком. Формат ввода и отображения дат — `DD-MM-YY`; двузначный год трактуется как 2000–2099.
 
-## Quota start date and Traffic periods
+## Calendar-month Traffic and Quota
 
 On the first launch, Sysmon asks for:
 
-- Quota start date input and all displayed dates use `DD-MM-YY` format (day-month-year); the default is the current date. Blank or invalid input uses today's date.
-- Traffic quota in decimal Tb; enter numbers only, such as `0.5`, `4.5`, or `8`. Do not add a unit suffix. Leaving the quota field blank applies `Unlimited`. Invalid input also falls back to `Unlimited`.
+- On first launch, Sysmon asks only for the monthly Traffic quota in decimal Tb. Enter numbers only, such as `0.5`, `4.5`, or `8`, without a unit suffix. Leaving the field blank applies `Unlimited`. Invalid input also falls back to `Unlimited`.
+- Custom date ranges use `DD-MM-YY`; displayed custom dates use the same format.
 
-The quota start date cannot be earlier than the installation date. A future start date is allowed: Quota usage displays `-` until that date, while Traffic continues to show collected data. The selected date affects Quota usage only. Quota usage is cumulative from that date through today; it does not automatically reset on a monthly anniversary. Traffic periods include all stored daily data from the actual collection start (the installation date), even when the quota cycle starts later. The selected period is stored in `traffic.json`; older state files without this setting default to `Today`. The `Month` period covers the first day of the current calendar month through today; `Last month` covers the previous calendar month using its actual number of days, including leap days. A trailing `*` marks a calendar month whose data is partial because Sysmon collection was installed after its first day. The quota cycle start date does not make the monthly Traffic report partial. Use a custom date range to inspect any completed historical month. Invalid-input messages remain visible for five seconds.
+Traffic is grouped by calendar months from the actual installation date. The installation month is partial if Sysmon was installed after the first day; it is marked with `*`. From the next month onward, each period starts on the first day and ends on the actual last day of that month. `Month` shows the current calendar month; `Last month` shows the previous one. February contains 28 or 29 days depending on the year, while other months use their actual 30- or 31-day length.
+
+The monthly Quota uses the same calendar boundaries and resets automatically on the first day of each month. The configured limit remains the same each month. The selected period and historical month are stored in `traffic.json`; older state files without these settings default to `Today` and the current month. The `M` key opens monthly history; `[` and `]` navigate between months. The month and year are displayed together (for example, `Jan 2026`). Navigation is limited to the installation month through the current month.
 
 Hotkeys:
 
-- `D` — change the Quota calculation start date.
-- `L` — change the quota in Tb or set it to `Unlimited`.
+- `M` — open monthly history.
+- `[` / `]` — browse previous / next months.
+- `L` — change the monthly quota or set it to `Unlimited`.
 
-The Quota start date does not filter Traffic period reports. Blank date input sets today's date. Leave the quota field empty to apply `Unlimited`; quota input accepts numeric values only, without `Tb` or other suffixes. Invalid date input falls back to today's date, and invalid quota input falls back to `Unlimited`. Error messages remain visible for five seconds.
+Quota input accepts numeric values only, without `Tb` or other suffixes. Leave the field empty to apply `Unlimited`. Invalid quota input falls back to `Unlimited`. Error messages remain visible for five seconds.
 
-Traffic, Memory, Disk, and Quota values use the requested `Gb`, `Mb`, and `Tb` labels, with a space before each unit. These labels are visual abbreviations only: Sysmon continues to count bytes, not bits. Traffic uses decimal conversion: 1,000 Gb = 1 Tb. Traffic values below 1,000 Gb are shown in Gb; at 1,000 Gb and above they are converted to Tb and shown with two decimal places. Quota input is always in decimal Tb and accepts numbers only: enter `0.5`, `4.5`, or `8`, without a unit suffix. Leave the interactive quota field blank to apply `Unlimited`. The configured quota is displayed in Tb, removing unnecessary trailing zeros (for example, `8 Tb`, `4.5 Tb`, or `0.5 Tb`); quota usage uses the same adaptive units as Traffic: Gb below 1 Tb and Tb with two decimal places from 1 Tb upward. Memory usage is shown in binary GiB-style units; the displayed RAM total is rounded to the nearest conventional power-of-two capacity (1, 2, 4, 8, 16, 32 Gb, etc.) while the used value remains actual. Disk retains binary byte conversion; Used is shown with one decimal place and Total is rounded to a whole unit. Used/total pairs display one shared unit at the end and use `|` as the separator. Disk I/O retains `Mb/s`, while the read/write separator is `|`. When the quota is `Unlimited`, the Quota field is hidden entirely while traffic collection continues. A 100,000 Gb preview is shown as 100.00 Tb and fits both Today and 30 days in the existing Network row.
+Traffic, Memory, Disk, and Quota values use the requested `Gb`, `Mb`, and `Tb` labels, with a space before each unit. These labels are visual abbreviations only: Sysmon continues to count bytes, not bits. Traffic uses decimal conversion: 1,000 Gb = 1 Tb. Traffic values below 1,000 Gb are shown in Gb; at 1,000 Gb and above they are converted to Tb and shown with two decimal places. Quota input is always in decimal Tb and accepts numbers only: enter `0.5`, `4.5`, or `8`, without a unit suffix. Leave the interactive quota field blank to apply `Unlimited`. The configured quota is displayed in Tb, removing unnecessary trailing zeros (for example, `8 Tb`, `4.5 Tb`, or `0.5 Tb`); quota usage uses the same adaptive units as Traffic: Gb below 1 Tb and Tb with two decimal places from 1 Tb upward. RAM usage is shown in binary GiB-style units; the displayed total is rounded to the nearest conventional power-of-two capacity (1, 2, 4, 8, 16, 32 Gb, etc.), while the used value remains actual. For example, a host with 15.3 GiB visible to Linux is shown as 16 Gb total. Disk retains binary byte conversion; Used is shown with one decimal place and Total is rounded to a whole unit. Used/total pairs display one shared unit at the end and use `|` as the separator. Disk I/O retains `Mb/s`, while the read/write separator is `|`. When the quota is `Unlimited`, the Quota field is hidden entirely while traffic collection continues. A 100,000 Gb preview is shown as 100.00 Tb and fits both Today and 30 days in the existing Network row.
 
 Optional administrative commands:
 
 ```sh
 sysmon --set-limit 8
-sysmon --quota-start-date 13-11-26
 sysmon --clear-limit
 ```
 
@@ -92,18 +97,18 @@ To inspect how large Traffic and Quota values fit into the existing Network pane
 sysmon --preview-network 100000Gb
 ```
 
-This opens the normal curses interface with synthetic Network values. The supplied size is shown as Traffic and as both used/limit Quota values. Press `P` to cycle through periods and `Q` to exit. Preview mode skips first-run setup and disables date/quota editing. It does not read or modify the saved traffic history, quota settings, or collector baseline. Any supported size can be supplied, for example `500Gb`, `2Tb`, or `100000Gb`.
+This opens the normal curses interface with synthetic Network values. The supplied size is shown as Traffic and as both used/limit Quota values. Press `P` to cycle through periods and `Q` to exit. Preview mode skips first-run setup and disables quota editing. It does not read or modify the saved traffic history, quota settings, or collector baseline. Any supported size can be supplied, for example `500Gb`, `2Tb`, or `100000Gb`.
 
 ## Reset first-run setup
 
-For testing the first-run prompts, reset only the date/quota setup:
+For testing the first-run quota prompt, reset the quota setup:
 
 ```sh
 sudo sysmon --reset-setup
 sudo sysmon
 ```
 
-The next launch asks for the Quota start date and quota again. The reset restores the quota start-date default to the current date and the quota to `Unlimited`. It preserves the collected daily traffic, installation timestamp, selected network interface, selected period, and collector baseline. It does not restart or reset background traffic collection.
+The next launch asks for the monthly quota again. The reset restores the quota to `Unlimited` and the selected period to `Today`. It preserves the collected daily traffic, installation timestamp, selected network interface, selected historical month, and collector baseline. It does not restart or reset background traffic collection.
 
 ## Сетевой интерфейс
 
@@ -126,7 +131,9 @@ sysmon --interface auto
 - Интервал сбора: 60 секунд.
 - Данные: `/var/lib/sysmon/traffic.json`.
 - Блокировка параллельного запуска: `/var/lib/sysmon/traffic.lock`.
-- История хранится по календарным дням и не ограничена по сроку.
+- История хранится по календарным дням без автоматического удаления старых месяцев.
+- История доступна с момента установки Sysmon; месяц установки может быть неполным.
+- Размер истории обычно увеличивается лишь на десятки килобайт в год, в зависимости от числа записей и объёма чисел.
 - JSON обновляется атомарной заменой файла.
 - Счётчик сверяется с предыдущим значением; после перезагрузки учитываются байты, уже отправленные с момента загрузки ОС. При сбросе счётчика создаётся новая базовая точка, отрицательная разница не учитывается.
 
