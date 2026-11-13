@@ -47,7 +47,7 @@ sysmon
 - `L` — изменить месячный лимит в Tb или выбрать `Unlimited`.
 - `Q` — выйти.
 
-Выбранный период и месяц истории сохраняются при выходе.
+Выбранный стандартный период и месяц истории сохраняются в настройках. Если предыдущий сеанс завершился в истории, после нового запуска Sysmon откроется в `Today`; нажатие `M` вернёт к сохранённому месяцу. Внутри истории повторное нажатие `M` возвращает к текущему месяцу.
 
 Блок **Hotkeys** показывает `M: months` в обычном режиме. После открытия истории через `M` появляются подсказки `M: current` и `[ ]: browse`.
 
@@ -66,7 +66,7 @@ On the first launch, Sysmon asks only for the monthly Traffic quota in decimal T
 
 Traffic is grouped by calendar months from the start of reliable collection. The installation month may be partial because collection starts on the installation date; this is explained during first-run setup and is not marked with an asterisk in the Network panel. `P` cycles only `Today`, `7 days`, `1 month` (the current calendar month), and `All time`. The `M` key opens calendar-month history; only in that mode are `[` and `]` shown for previous/next month navigation. Month labels use the compact format `Jan ’26`. February contains 28 or 29 days depending on the year, while other months use their actual 30- or 31-day length.
 
-The monthly Quota uses the same calendar boundaries and resets automatically on the first day of each month. The configured limit remains the same each month. The selected period and historical month are stored in `traffic.json`; legacy period values that are no longer available through `P` are reset to `Today`. When migrating a state file from a build that predates the outbound collector, Sysmon excludes daily records before 13 Nov 2026, the date the collector was introduced. Those older JSON entries are retained but are not included in traffic or quota totals, and month navigation starts at the first reliable collection month.
+The monthly Quota uses the same calendar boundaries and resets automatically on the first day of each month. The configured limit remains the same each month. The standard selected period and historical month are stored in `traffic.json`; legacy period values that are no longer available through `P` are reset to `Today`. If the previous session ended in monthly history, the next launch starts in `Today`; pressing `M` reopens the saved historical month. While history is open, pressing `M` returns to the current month. When migrating a state file from a build that predates the outbound collector, Sysmon excludes daily records before 13 Nov 2026, the date the collector was introduced. Those older JSON entries are retained but are not included in traffic or quota totals, and month navigation starts at the first reliable collection month.
 
 Hotkeys:
 
