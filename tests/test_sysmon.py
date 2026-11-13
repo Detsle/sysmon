@@ -234,8 +234,9 @@ class FormattingAndPeriodTests(unittest.TestCase):
         self.assertEqual(total, 500)
 
     def test_traffic_is_formatted_in_decimal_gb_to_one_digit(self):
+        self.assertEqual(sysmon.format_gigabytes(3_000_000), "<0.1G")
         self.assertEqual(sysmon.format_gigabytes(100_000_000), "0.1G")
-        self.assertEqual(sysmon.format_gigabytes(1_250_000_000), "1.2G")
+        self.assertEqual(sysmon.format_gigabytes(1_250_000_000), "1.3G")
 
     def test_selected_period_is_clipped_to_tracking_start_date(self):
         today = datetime.date.today()
