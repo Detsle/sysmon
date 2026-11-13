@@ -246,7 +246,7 @@ class TrafficTests(unittest.TestCase):
         expected_start = "Traffic collection started: [{}{}].".format(
             marker, start_date.strftime("%d.%m.%y")
         )
-        self.assertIn("Sysmon setup\\n------------", output)
+        self.assertIn("Sysmon setup\n------------", output)
         self.assertIn(expected_start, output)
         self.assertIn("* = start date of partial-month reporting.", output)
         self.assertIn("Traffic is counted separately for each calendar month.", output)
@@ -812,8 +812,8 @@ class FormattingAndPeriodTests(unittest.TestCase):
         stdscr = mock.Mock()
         stdscr.getmaxyx.return_value = (24, 72)
         stdscr.getstr.return_value = b"8"
-        with mock.patch.object(sysmon.curses, "curs_set"), \\
-             mock.patch.object(sysmon.curses, "echo"), \\
+        with mock.patch.object(sysmon.curses, "curs_set"), \
+             mock.patch.object(sysmon.curses, "echo"), \
              mock.patch.object(sysmon.curses, "noecho"):
             value = sysmon.read_hotkey_input(stdscr, sysmon.QUOTA_INPUT_PROMPT, 16)
 
