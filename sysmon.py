@@ -502,12 +502,9 @@ def quota_text(state, today=None):
     today = today or datetime.date.today()
     start = tracking_start_date(state)
     if today < start:
-        return "Quota: - / {}GB".format(format_gigabyte_number(limit))
+        return "Quota: -/{}GB".format(format_gigabytes(limit))
     used = sum_range(state.get("daily", {}), start, today)
-    return "Quota: {} / {}GB".format(
-        format_gigabyte_number(used),
-        format_gigabyte_number(limit),
-    )
+    return "Quota: {}/{}".format(format_gigabytes(used), format_gigabytes(limit))
 
 
 def network_status_line(state, period, today=None, custom_from=None, custom_to=None):
@@ -526,7 +523,18 @@ def network_status_line(state, period, today=None, custom_from=None, custom_to=N
     quota = quota_text(state, today=today)
     if quota is not None:
         fields.append(quota)
-    return "  ".join(fields)
+    line = "  ".join(fields)
+    if len(line) > BOX_WIDTH - 6:
+        compact_labels = {
+            "today": "Today",
+            "7d": "7d",
+            "30d": "30d",
+            "all": "All",
+            "custom": "Custom",
+        }
+        fields[0] = "Period: {}".format(compact_labels.get(period, period_label))
+        line = "  ".join(fields)
+    return line
 
 
 def prompt_first_run_setup():
