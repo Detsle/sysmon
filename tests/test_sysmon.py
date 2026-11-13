@@ -240,9 +240,16 @@ class TrafficTests(unittest.TestCase):
         self.assertEqual(state["settings"]["selected_period"], "today")
         self.assertIsNone(state["settings"]["limit_bytes"])
         self.assertTrue(state["settings"]["setup_complete"])
-        self.assertIn("Traffic collection is active since installation.", fake_stdout.getvalue())
-        self.assertIn("Traffic and quota usage are grouped by calendar month.", fake_stdout.getvalue())
-        self.assertIn("If collection starts after the first day, that month is partial and marked with *.", fake_stdout.getvalue())
+        output = fake_stdout.getvalue()
+        start_date = sysmon.data_start_date(state)
+        marker = "*" if start_date.day > 1 else ""
+        expected_start = "Traffic collection started: [{}{}].".format(
+            marker, start_date.strftime("%d.%m.%y")
+        )
+        self.assertIn("Sysmon setup\\n------------", output)
+        self.assertIn(expected_start, output)
+        self.assertIn("* = start date of partial-month reporting.", output)
+        self.assertIn("Traffic is counted separately for each calendar month.", output)
         self.assertEqual(
             input_mock.call_args.args[0],
             sysmon.QUOTA_INPUT_PROMPT,
@@ -292,7 +299,7 @@ class TrafficTests(unittest.TestCase):
         self.assertNotIn("quota_start_date", state["settings"])
         self.assertIsNone(state["settings"]["limit_bytes"])
         self.assertTrue(state["settings"]["setup_complete"])
-        self.assertEqual(sleep.call_count, 1)
+        sleep.assert_called_once_with(sysmon.STATUS_MESSAGE_DURATION_SECONDS)
         self.assertIn("Using Unlimited", fake_stdout.getvalue())
 
 
@@ -798,8 +805,29 @@ class FormattingAndPeriodTests(unittest.TestCase):
         stdscr.keypad.assert_called_once_with(True)
         stdscr.timeout.assert_called_once_with(1000)
 
-    def test_status_notification_duration_defaults_to_three_seconds(self):
-        self.assertEqual(sysmon.HOTKEY_STATUS_DURATION_SECONDS, 3.0)
+    def test_status_message_duration_defaults_to_three_seconds(self):
+        self.assertEqual(sysmon.STATUS_MESSAGE_DURATION_SECONDS, 3.0)
+
+    def test_quota_prompt_input_field_stays_inside_hotkeys_box(self):
+        stdscr = mock.Mock()
+        stdscr.getmaxyx.return_value = (24, 72)
+        stdscr.getstr.return_value = b"8"
+        with mock.patch.object(sysmon.curses, "curs_set"), \\
+             mock.patch.object(sysmon.curses, "echo"), \\
+             mock.patch.object(sysmon.curses, "noecho"):
+            value = sysmon.read_hotkey_input(stdscr, sysmon.QUOTA_INPUT_PROMPT, 16)
+
+        self.assertEqual(value, "8")
+        content_width = sysmon.BOX_WIDTH - 6
+        start_x = (72 - sysmon.BOX_WIDTH) // 2 + 3
+        field_x = start_x + len(sysmon.QUOTA_INPUT_PROMPT)
+        stdscr.getstr.assert_called_once_with(
+            18, field_x, content_width - len(sysmon.QUOTA_INPUT_PROMPT)
+        )
+        self.assertEqual(
+            sysmon.QUOTA_INPUT_PROMPT,
+            "Monthly limit (Tb) [X or X.X; blank = Unlimited]: ",
+        )
 
     def test_hotkeys_describe_actions_and_month_navigation_directions(self):
         for period in ("today", "7d", "month", "all"):
