@@ -112,6 +112,35 @@ class TrafficTests(unittest.TestCase):
         self.assertTrue(state["settings"]["setup_complete"])
         self.assertFalse(list(sysmon.DATA_FILE.parent.glob(".traffic.*.tmp")))
 
+    def test_reset_first_run_setup_preserves_collected_traffic(self):
+        self.collect_with(1000)
+        today = datetime.date.today()
+        install_date = datetime.date.fromtimestamp(self.read_state()["created_at"])
+        configured_date = max(install_date, today - datetime.timedelta(days=1))
+        sysmon.update_settings(
+            quota_start_date=configured_date,
+            limit_bytes=2_000_000_000,
+            set_limit=True,
+            setup_complete=True,
+        )
+        # Keep representative collected totals and the collector baseline.
+        state = self.read_state()
+        state["daily"][today.isoformat()] = 987_654_321
+        state["last_counter"] = 123_456_789
+        state["interface"] = "eth0"
+        sysmon.atomic_save(state)
+
+        sysmon.reset_first_run_setup()
+        reset = self.read_state()
+
+        self.assertFalse(reset["settings"]["setup_complete"])
+        self.assertEqual(reset["settings"]["quota_start_date"], today.isoformat())
+        self.assertIsNone(reset["settings"]["limit_bytes"])
+        self.assertEqual(reset["daily"], state["daily"])
+        self.assertEqual(reset["last_counter"], state["last_counter"])
+        self.assertEqual(reset["interface"], state["interface"])
+        self.assertEqual(reset["created_at"], state["created_at"])
+
     def test_unlimited_is_default_quota(self):
         self.collect_with(1000)
         state = self.read_state()
