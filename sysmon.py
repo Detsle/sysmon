@@ -19,6 +19,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from decimal import Decimal
 
 import psutil
 
@@ -366,17 +367,14 @@ def parse_size(value):
 
 
 def parse_quota_size(value):
-    """Parse quota input; a bare number means decimal Gb."""
-    candidate = value.strip()
-    if re.fullmatch(r"\d+(?:\.\d+)?", candidate):
-        candidate += "Gb"
-    try:
-        result = parse_size(candidate)
-    except SysmonError as exc:
-        raise ValueError(str(exc))
-    if result <= 0:
+    """Parse quota input in decimal Tb; bare numbers are treated as Tb."""
+    match = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*(TB)?\s*", value, re.IGNORECASE)
+    if not match:
+        raise ValueError("Enter quota in Tb, for example: 0.5, 4.5, or 8")
+    amount = Decimal(match.group(1))
+    if not amount.is_finite() or amount <= 0:
         raise ValueError("Quota must be greater than zero")
-    return result
+    return int(amount * Decimal(1000 ** 4))
 
 
 def update_settings(
@@ -504,10 +502,19 @@ def format_gigabyte_pair(first_bytes, second_bytes, binary=False, integer_total=
     values, unit, precision = _scaled_gigabyte_values(
         [first_bytes, second_bytes], binary=binary
     )
-    total_precision = 0 if integer_total and unit == "Gb" else precision
+    total_precision = 0 if integer_total else precision
     first = "-" if values[0] is None else _format_scaled_amount(values[0], precision)
     second = "-" if values[1] is None else _format_scaled_amount(values[1], total_precision)
     return "{} | {} {}".format(first, second, unit)
+
+
+def format_quota_pair(used_bytes, limit_bytes):
+    """Format both quota usage and the configured limit consistently in decimal Tb."""
+    terabyte = float(1000 ** 4)
+    used = "-" if used_bytes is None else _format_scaled_amount(max(0, used_bytes) / terabyte, 2)
+    limit = _format_scaled_amount(max(0, limit_bytes) / terabyte, 2)
+    limit = limit.rstrip("0").rstrip(".")
+    return "{} | {} Tb".format(used, limit)
 
 
 def tracking_start_date(state):
@@ -544,10 +551,10 @@ def quota_text(state, today=None):
     today = today or datetime.date.today()
     start = tracking_start_date(state)
     if today < start:
-        values = format_gigabyte_pair(None, limit)
+        values = format_quota_pair(None, limit)
     else:
         used = sum_range(state.get("daily", {}), start, today)
-        values = format_gigabyte_pair(used, limit)
+        values = format_quota_pair(used, limit)
     return "Quota: {}".format(values)
 
 
@@ -658,7 +665,7 @@ def prompt_first_run_setup():
         print("Traffic totals will remain unavailable until the selected date.")
 
     raw_quota = input(
-        "Traffic quota (Gb/Tb; number defaults to Gb) [Unlimited]: "
+        "Traffic quota in Tb [Unlimited]: "
     ).strip()
     limit_bytes = None
     if raw_quota and raw_quota.lower() not in ("unlimited", "none", "off"):
@@ -744,11 +751,11 @@ def edit_quota_start_date(stdscr):
 
 
 def edit_traffic_quota(stdscr):
-    """Change the outbound quota in decimal Gb; blank or invalid input means Unlimited."""
+    """Change the outbound quota in decimal Tb; blank or invalid input means Unlimited."""
     state, error = read_state_for_ui()
     if error or state is None:
         return "Traffic data unavailable"
-    prompt = "Quota (Gb/Tb; default Gb) [Unlimited]: "
+    prompt = "Quota in Tb [Unlimited]: "
     raw = read_hotkey_input(stdscr, prompt, 16)
     limit_bytes = None
     error_message = None
@@ -953,7 +960,7 @@ def build_parser():
     parser.add_argument(
         "--set-limit",
         metavar="SIZE",
-        help="set outbound traffic quota, e.g. 2000Gb or 2Tb; a bare number means Gb",
+        help="set outbound traffic quota in decimal Tb, e.g. 0.5, 4.5, or 8",
     )
     parser.add_argument("--clear-limit", action="store_true", help="set the traffic quota to Unlimited")
     parser.add_argument("--quota-start-date", metavar="DD.MM.YYYY", help="set the quota calculation start date")
