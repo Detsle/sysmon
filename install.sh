@@ -1,7 +1,6 @@
 #!/bin/sh
 set -eu
 
-APP_NAME="sysmon"
 INSTALL_DIR="/opt/sysmon"
 BIN_DIR="/usr/local/bin"
 DATA_DIR="/var/lib/sysmon"
@@ -38,7 +37,7 @@ if [ "$OS_NAME" = "Linux" ]; then
     elif command -v zypper >/dev/null 2>&1; then PACKAGE_MANAGER="zypper"
     elif command -v emerge >/dev/null 2>&1; then PACKAGE_MANAGER="emerge"
     fi
-elif [ "$OS_NAME" = "FreeBSD" ] || [ "$OS_NAME" = "DragonFly" ]; then
+elif [ "$OS_NAME" = "FreeBSD" ]; then
     if command -v pkg >/dev/null 2>&1; then PACKAGE_MANAGER="pkg"; fi
 elif [ "$OS_NAME" = "OpenBSD" ]; then
     if command -v pkg_add >/dev/null 2>&1; then PACKAGE_MANAGER="pkg_add"; fi
@@ -49,7 +48,7 @@ elif [ "$OS_NAME" = "NetBSD" ]; then
 fi
 
 find_python() {
-    for candidate in python3.13 python3.12 python3.11 python3.10 python3.9 python3.8 python3; do
+    for candidate in python3.14 python3.13 python3.12 python3.11 python3.10 python3.9 python3.8 python3; do
         if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 8) else 1)' >/dev/null 2>&1; then
             command -v "$candidate"
             return 0
@@ -100,7 +99,7 @@ install_build_dependencies() {
         Linux:pacman) pacman -S --needed --noconfirm base-devel ;;
         Linux:zypper) zypper --non-interactive install python3-devel gcc make ;;
         Linux:emerge) emerge --ask=n sys-devel/gcc ;;
-        FreeBSD:pkg|DragonFly:pkg)
+        FreeBSD:pkg)
             # Clang and make are normally part of the base development toolchain.
             command -v cc >/dev/null 2>&1 || pkg install -y llvm
             ;;
