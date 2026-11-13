@@ -25,11 +25,13 @@ import psutil
 
 VERSION = "0.2.0-dev"
 BOX_WIDTH = 70
-DEFAULT_PERIODS = ("today", "7d", "30d", "all")
+DEFAULT_PERIODS = ("today", "7d", "30d", "month", "last_month", "all")
 PERIOD_LABELS = {
     "today": "Today",
     "7d": "7 days",
     "30d": "30 days",
+    "month": "Month",
+    "last_month": "Last month",
     "all": "All time",
 }
 DATA_DIR = Path(os.environ.get("SYSMON_DATA_DIR", "/var/lib/sysmon"))
@@ -198,6 +200,7 @@ def empty_state():
             "interface": "auto",
             "limit_bytes": None,
             "quota_start_date": datetime.date.today().isoformat(),
+            "selected_period": "today",
             "setup_complete": False,
         },
         "notes": [],
@@ -223,9 +226,12 @@ def load_state():
         "quota_start_date",
         datetime.date.fromtimestamp(int(state.get("created_at", time.time()))).isoformat(),
     )
+    state["settings"].setdefault("selected_period", "today")
     state["settings"].setdefault("setup_complete", False)
     if not isinstance(state["settings"].get("interface"), str):
         raise SysmonError("traffic.json contains an invalid interface setting")
+    if state["settings"].get("selected_period") not in DEFAULT_PERIODS:
+        raise SysmonError("traffic.json contains an invalid selected period")
     try:
         limit = state["settings"].get("limit_bytes")
         limit = int(limit) if limit is not None else None
@@ -386,6 +392,7 @@ def update_settings(
     set_limit=False,
     clear_limit=False,
     quota_start_date=None,
+    selected_period=None,
     setup_complete=None,
 ):
     with StateLock():
@@ -404,10 +411,14 @@ def update_settings(
             if quota_start_date < installed_at:
                 raise SysmonError(
                     "Traffic start date cannot be earlier than installation ({})".format(
-                        installed_at.strftime("%d.%m.%Y")
+                        installed_at.strftime("%d-%m-%y")
                     )
                 )
             settings["quota_start_date"] = quota_start_date.isoformat()
+        if selected_period is not None:
+            if selected_period not in DEFAULT_PERIODS:
+                raise SysmonError("Invalid selected period")
+            settings["selected_period"] = selected_period
         if setup_complete is not None:
             settings["setup_complete"] = bool(setup_complete)
         atomic_save(state)
@@ -446,6 +457,11 @@ def period_bounds(period, today=None, custom_from=None, custom_to=None):
         return today - datetime.timedelta(days=6), today
     if period == "30d":
         return today - datetime.timedelta(days=29), today
+    if period == "month":
+        return today.replace(day=1), today
+    if period == "last_month":
+        last_day_previous_month = today.replace(day=1) - datetime.timedelta(days=1)
+        return last_day_previous_month.replace(day=1), last_day_previous_month
     if period == "all":
         return datetime.date.min, today
     if period == "custom" and custom_from and custom_to:
@@ -454,10 +470,11 @@ def period_bounds(period, today=None, custom_from=None, custom_to=None):
 
 
 def parse_display_date(value):
-    """Parse the user-facing DD.MM.YY date format."""
-    if not re.fullmatch(r"\d{2}\.\d{2}\.\d{2}", value):
-        raise ValueError("Use DD.MM.YY format")
-    return datetime.datetime.strptime(value, "%d.%m.%y").date()
+    """Parse user-facing DD-MM-YY dates; two-digit years map to 2000-2099."""
+    if not re.fullmatch(r"\d{2}-\d{2}-\d{2}", value):
+        raise ValueError("Use DD-MM-YY format")
+    day, month, year = (int(part) for part in value.split("-"))
+    return datetime.date(2000 + year, month, day)
 
 
 def format_bytes(value):
@@ -643,8 +660,8 @@ def prompt_first_run_setup():
     print("")
 
     raw_date = input(
-        "Traffic start date (DD.MM.YY, day/month/year) [{}]: ".format(
-            today.strftime("%d.%m.%Y")
+        "Traffic start date (DD-MM-YY, day-month-year) [{}]: ".format(
+            today.strftime("%d-%m-%y")
         )
     ).strip()
     start_date = today
@@ -654,14 +671,14 @@ def prompt_first_run_setup():
             if entered_date < installed_at:
                 raise ValueError(
                     "Date cannot be earlier than installation ({})".format(
-                        installed_at.strftime("%d.%m.%Y")
+                        installed_at.strftime("%d-%m-%y")
                     )
                 )
             start_date = entered_date
         except ValueError as exc:
             print(
                 "Invalid date: {}. Using today's date ({}).".format(
-                    exc, today.strftime("%d.%m.%Y")
+                    exc, today.strftime("%d-%m-%y")
                 ),
                 flush=True,
             )
@@ -729,7 +746,7 @@ def edit_quota_start_date(stdscr):
         return "Traffic data unavailable"
     today = datetime.date.today()
     installed_at = datetime.date.fromtimestamp(int(state.get("created_at", time.time())))
-    prompt = "Traffic start date DD.MM.YY [{}]: ".format(today.strftime("%d.%m.%Y"))
+    prompt = "Traffic start date DD-MM-YY [{}]: ".format(today.strftime("%d-%m-%y"))
     raw = read_hotkey_input(stdscr, prompt, 8)
     selected = today
     error_message = None
@@ -750,7 +767,7 @@ def edit_quota_start_date(stdscr):
         if error_message:
             return error_message
         if selected > today:
-            return "Start date updated; tracking starts {}".format(selected.strftime("%d.%m.%Y"))
+            return "Start date updated; tracking starts {}".format(selected.strftime("%d-%m-%y"))
         return "Start date set to {}".format(selected.strftime("%d.%m.%Y"))
     except (OSError, SysmonError) as exc:
         return "Cannot save start date: {}".format(exc)
@@ -803,7 +820,7 @@ def safe_addstr(win, y, x, text, max_width):
 
 def selected_period_text(period, custom_from=None, custom_to=None):
     if period == "custom":
-        return "Custom {} - {}".format(custom_from.strftime("%d.%m.%Y"), custom_to.strftime("%d.%m.%Y"))
+        return "Custom {} - {}".format(custom_from.strftime("%d-%m-%y"), custom_to.strftime("%d-%m-%y"))
     return PERIOD_LABELS[period]
 
 
@@ -839,8 +856,8 @@ def main(stdscr, args):
     periods = list(DEFAULT_PERIODS)
     current_period = args.period
     period_index = periods.index(current_period) if current_period in periods else -1
-    custom_from = datetime.date.fromisoformat(args.from_date) if args.from_date else None
-    custom_to = datetime.date.fromisoformat(args.to_date) if args.to_date else None
+    custom_from = parse_display_date(args.from_date) if args.from_date else None
+    custom_to = parse_display_date(args.to_date) if args.to_date else None
     hotkey_status = None
     hotkey_status_until = 0.0
 
@@ -960,16 +977,16 @@ def build_parser():
         metavar="SIZE",
         help="preview the Network row with synthetic Traffic and Quota values; does not change stored data",
     )
-    parser.add_argument("--period", choices=DEFAULT_PERIODS, default="7d", help="initial traffic period in the UI")
-    parser.add_argument("--from-date", metavar="DD.MM.YY", help="custom period start date")
-    parser.add_argument("--to-date", metavar="DD.MM.YY", help="custom period end date")
+    parser.add_argument("--period", choices=DEFAULT_PERIODS, help="initial traffic period in the UI (saved for next launch)")
+    parser.add_argument("--from-date", metavar="DD-MM-YY", help="custom period start date")
+    parser.add_argument("--to-date", metavar="DD-MM-YY", help="custom period end date")
     parser.add_argument(
         "--set-limit",
         metavar="TB",
         help="set outbound traffic quota in decimal Tb (numeric value only), e.g. 0.5, 4.5, or 8",
     )
     parser.add_argument("--clear-limit", action="store_true", help="set the traffic quota to Unlimited")
-    parser.add_argument("--quota-start-date", metavar="DD.MM.YY", help="set the quota calculation start date")
+    parser.add_argument("--quota-start-date", metavar="DD-MM-YY", help="set the quota calculation start date")
     parser.add_argument(
         "--reset-setup",
         action="store_true",
@@ -990,7 +1007,7 @@ def main_cli():
             start = parse_display_date(args.from_date)
             end = parse_display_date(args.to_date)
         except ValueError as exc:
-            parser.error("dates must use DD.MM.YY format: {}".format(exc))
+            parser.error("dates must use DD-MM-YY format: {}".format(exc))
         if start > end:
             parser.error("--from-date must not be later than --to-date")
         args.period = "custom"
