@@ -183,7 +183,7 @@ def detect_interface(counters):
     return fallback_interface(counters)
 
 
-def empty_state(interface=None):
+def empty_state():
     return {
         "version": 1,
         "created_at": int(time.time()),
