@@ -198,6 +198,22 @@ class TrafficTests(unittest.TestCase):
         self.assertEqual(state["settings"]["limit_bytes"], 2_000_000_000)
         self.assertTrue(state["settings"]["setup_complete"])
 
+    def test_first_run_quota_8000_gb_is_stored_as_8_tb(self):
+        self.collect_with(1000)
+
+        class FakeTTY(io.StringIO):
+            def isatty(self):
+                return True
+
+        with mock.patch.object(sysmon.sys, "stdin", FakeTTY()), \
+             mock.patch.object(sysmon.sys, "stdout", FakeTTY()), \
+             mock.patch("builtins.input", side_effect=["", "8000"]):
+            sysmon.prompt_first_run_setup()
+
+        state = self.read_state()
+        self.assertEqual(state["settings"]["limit_bytes"], 8_000_000_000_000)
+        self.assertEqual(sysmon.quota_text(state), "Quota: 0.0 | 8.00 Tb")
+
     def test_first_run_invalid_date_and_quota_use_defaults(self):
         self.collect_with(1000)
         installed_at = datetime.date.fromtimestamp(self.read_state()["created_at"])
@@ -255,6 +271,15 @@ class TrafficTests(unittest.TestCase):
         state = self.read_state()
         self.assertIsNone(state["settings"]["limit_bytes"])
         self.assertIn("Invalid quota", status)
+
+    def test_hotkey_quota_accepts_tb_suffix(self):
+        self.collect_with(1000)
+        with mock.patch.object(sysmon, "read_hotkey_input", return_value="8Tb"):
+            status = sysmon.edit_traffic_quota(None)
+        state = self.read_state()
+        self.assertEqual(state["settings"]["limit_bytes"], 8_000_000_000_000)
+        self.assertEqual(sysmon.quota_text(state), "Quota: 0.0 | 8.00 Tb")
+        self.assertEqual(status, "Quota updated")
 
     def test_start_date_cannot_be_earlier_than_installation(self):
         self.collect_with(1000)
@@ -325,7 +350,7 @@ class TrafficTests(unittest.TestCase):
         }
         line = sysmon.network_status_line(state, "30d", today=today)
         self.assertLessEqual(len(line), sysmon.BOX_WIDTH - 6)
-        self.assertIn("Quota: 0.12 | 1.95 Tb", line)
+        self.assertIn("Quota: 0.13 | 2.00 Tb", line)
 
 
 class FormattingAndPeriodTests(unittest.TestCase):
@@ -375,10 +400,10 @@ class FormattingAndPeriodTests(unittest.TestCase):
                 line = sysmon.network_status_line(state, period, today=today)
                 self.assertLessEqual(len(line), sysmon.BOX_WIDTH - 6)
                 self.assertIn("Period: {}".format(label), line)
-                self.assertIn("Traffic: 97.66 Tb", line)
-                self.assertIn("Quota: 97.66 | 97.66 Tb", line)
+                self.assertIn("Traffic: 100.00 Tb", line)
+                self.assertIn("Quota: 100.00 | 100.00 Tb", line)
 
-    def test_memory_and_disk_metrics_use_shared_units_and_pipe_separators(self):
+    def test_memory_and_disk_totals_are_rounded_to_integers(self):
         gib = 1024 ** 3
         memory_line = sysmon.memory_status_line(
             gib,
@@ -388,7 +413,7 @@ class FormattingAndPeriodTests(unittest.TestCase):
         )
         self.assertEqual(
             memory_line,
-            "Used: 1.0 | 7.8 Gb   Swap: 0.0 | 8.0 Gb",
+            "Used: 1.0 | 8 Gb   Swap: 0.0 | 8 Gb",
         )
 
         disk_line = sysmon.disk_status_line(
@@ -399,7 +424,7 @@ class FormattingAndPeriodTests(unittest.TestCase):
         )
         self.assertEqual(
             disk_line,
-            "Used: 29.4 | 147.6 Gb   IO: 0.0 Mb/s read | 0.0 Mb/s write",
+            "Used: 29.4 | 148 Gb   IO: 0.0 Mb/s read | 0.0 Mb/s write",
         )
         self.assertLessEqual(len(disk_line), sysmon.BOX_WIDTH - 6)
 
@@ -413,12 +438,13 @@ class FormattingAndPeriodTests(unittest.TestCase):
         self.assertEqual(sysmon.format_gigabytes(100_000_000), "0.1 Gb")
         self.assertEqual(sysmon.format_gigabytes(1_250_000_000), "1.3 Gb")
 
-    def test_gigabytes_convert_to_terabytes_at_1024_gb(self):
-        self.assertEqual(sysmon.format_gigabytes(1_023_900_000_000), "1023.9 Gb")
-        self.assertEqual(sysmon.format_gigabytes(1_024_000_000_000), "1.00 Tb")
-        self.assertEqual(sysmon.format_gigabytes(1_136_640_000_000), "1.11 Tb")
+    def test_gigabytes_convert_to_terabytes_at_decimal_1000_gb(self):
+        self.assertEqual(sysmon.format_gigabytes(999_900_000_000), "999.9 Gb")
+        self.assertEqual(sysmon.format_gigabytes(1_000_000_000_000), "1.00 Tb")
+        self.assertEqual(sysmon.format_gigabytes(1_110_000_000_000), "1.11 Tb")
+        self.assertEqual(sysmon.format_gigabytes(8_000_000_000_000), "8.00 Tb")
         self.assertEqual(
-            sysmon.format_gigabyte_pair(1_024_000_000_000, 5_500_000_000),
+            sysmon.format_gigabyte_pair(1_000_000_000_000, 5_500_000_000),
             "1.00 | 0.01 Tb",
         )
         self.assertEqual(
@@ -426,17 +452,26 @@ class FormattingAndPeriodTests(unittest.TestCase):
             "1.00 | 0.00 Tb",
         )
 
+    def test_quota_input_defaults_to_gb_and_accepts_gb_or_tb_suffix(self):
+        expected = 8_000_000_000_000
+        self.assertEqual(sysmon.parse_quota_size("8000"), expected)
+        self.assertEqual(sysmon.parse_quota_size("8000 Gb"), expected)
+        self.assertEqual(sysmon.parse_quota_size("8Tb"), expected)
+        self.assertEqual(sysmon.parse_quota_size("8 Tb"), expected)
+        with self.assertRaises(ValueError):
+            sysmon.parse_quota_size("invalid")
+
     def test_format_bytes_uses_requested_mb_gb_tb_casing(self):
         self.assertEqual(sysmon.format_bytes(1_000_000), "1.0 Mb")
         self.assertEqual(sysmon.format_bytes(1_000_000_000), "1.0 Gb")
         self.assertEqual(sysmon.format_bytes(1_000_000_000_000), "1.0 Tb")
 
-    def test_cpu_percentage_field_has_fixed_width(self):
+    def test_cpu_value_starts_after_one_space_and_cores_column_is_fixed(self):
         low = sysmon.cpu_status_line(0.0, "█" * 50)
         high = sysmon.cpu_status_line(100.0, "█" * 50)
-        self.assertEqual(low.index("%"), high.index("%"))
-        self.assertEqual(low[7:12], "  0.0")
-        self.assertEqual(high[7:12], "100.0")
+        self.assertTrue(low.startswith("Usage: 0.0%"))
+        self.assertTrue(high.startswith("Usage: 100.0%"))
+        self.assertEqual(low.index("Cores:"), high.index("Cores:"))
 
     def test_period_labels_use_requested_lowercase_style(self):
         self.assertEqual(sysmon.selected_period_text("7d"), "7 days")
@@ -464,7 +499,7 @@ class FormattingAndPeriodTests(unittest.TestCase):
         line = sysmon.preview_network_status_line("30d", value)
         self.assertEqual(
             line,
-            "Period: 30 days  Traffic: 97.66 Tb  Quota: 97.66 | 97.66 Tb",
+            "Period: 30 days  Traffic: 100.00 Tb  Quota: 100.00 | 100.00 Tb",
         )
         self.assertLessEqual(len(line), sysmon.BOX_WIDTH - 6)
 
@@ -473,7 +508,7 @@ class FormattingAndPeriodTests(unittest.TestCase):
         line = sysmon.preview_network_status_line("today", value)
         self.assertEqual(
             line,
-            "Period: Today  Traffic: 97.66 Tb  Quota: 97.66 | 97.66 Tb",
+            "Period: Today  Traffic: 100.00 Tb  Quota: 100.00 | 100.00 Tb",
         )
         self.assertLessEqual(len(line), sysmon.BOX_WIDTH - 6)
 
