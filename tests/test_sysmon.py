@@ -184,7 +184,7 @@ class TrafficTests(unittest.TestCase):
 
     def test_first_run_setup_accepts_custom_date_and_quota_gb(self):
         self.collect_with(1000)
-        class FakeTTY:
+        class FakeTTY(io.StringIO):
             def isatty(self):
                 return True
         future_start = datetime.date.today() + datetime.timedelta(days=5)
