@@ -808,7 +808,7 @@ class FormattingAndPeriodTests(unittest.TestCase):
         history_line = sysmon.hotkeys_status_line("month_history")
         self.assertEqual(
             history_line,
-            "C: current   [: prev month   ]: next month   Esc: back",
+            "C: current   [: previous month   ]: next month   Esc: back",
         )
         for unavailable_action in ("P:", "M:", "Q:", "L:"):
             self.assertNotIn(unavailable_action, history_line)
