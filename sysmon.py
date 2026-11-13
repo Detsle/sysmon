@@ -859,9 +859,16 @@ def safe_addstr(win, y, x, text, max_width):
         pass
 
 
-def selected_period_text(period, custom_from=None, custom_to=None):
+def selected_period_text(
+    period, custom_from=None, custom_to=None, today=None, selected_month=None
+):
     if period == "custom":
-        return "Custom {} - {}".format(custom_from.strftime("%d-%m-%y"), custom_to.strftime("%d-%m-%y"))
+        return "Custom {} - {}".format(
+            custom_from.strftime("%d-%m-%y"), custom_to.strftime("%d-%m-%y")
+        )
+    if period in ("month", "last_month", "month_history"):
+        month_start, _ = period_bounds(period, today=today, selected_month=selected_month)
+        return month_start.strftime("%b %Y")
     return PERIOD_LABELS[period]
 
 
@@ -873,20 +880,25 @@ def cpu_status_line(cpu, bar):
 
 
 def standard_memory_capacity_bytes(total_bytes):
-    """Round installed RAM to the nearest conventional power-of-two GiB tier."""
+    """Round RAM to a familiar decimal GB tier only when it is close to that tier."""
     if total_bytes <= 0:
         return total_bytes
-    gib = total_bytes / float(1024 ** 3)
-    exponent = max(0, int(math.floor(math.log(gib, 2) + 0.5)))
-    return int((2 ** exponent) * (1024 ** 3))
+    decimal_gb = total_bytes / float(1000 ** 3)
+    exponent = max(0, int(math.floor(math.log(decimal_gb, 2) + 0.5)))
+    tier_gb = float(2 ** exponent)
+    if abs(decimal_gb - tier_gb) / decimal_gb <= 0.05:
+        display_gb = tier_gb
+    else:
+        display_gb = round(decimal_gb)
+    return int(display_gb * (1000 ** 3))
 
 
 def memory_status_line(memory_used, memory_total, swap_used, swap_total):
-    """Render RAM capacity at a standard tier and keep actual usage unchanged."""
+    """Render actual RAM use and a familiar nominal total in decimal GB."""
     memory_total = standard_memory_capacity_bytes(memory_total)
     return "Used: {}   Swap: {}".format(
-        format_gigabyte_pair(memory_used, memory_total, binary=True, integer_total=True),
-        format_gigabyte_pair(swap_used, swap_total, binary=True, integer_total=True),
+        format_gigabyte_pair(memory_used, memory_total, binary=False, integer_total=True),
+        format_gigabyte_pair(swap_used, swap_total, binary=False, integer_total=True),
     )
 
 
