@@ -286,6 +286,48 @@ class TrafficTests(unittest.TestCase):
         self.assertNotIn("Quota:", line)
 
 
+    def test_preview_network_parser_accepts_size_without_modifying_data(self):
+        self.collect_with(123456)
+        before = sysmon.DATA_FILE.read_bytes()
+        args = sysmon.build_parser().parse_args(["--preview-network", "100000GB"])
+        self.assertEqual(sysmon.parse_size(args.preview_network), 100_000_000_000_000)
+        self.assertEqual(sysmon.DATA_FILE.read_bytes(), before)
+
+    def test_preview_network_mode_skips_first_run_setup_and_preserves_json(self):
+        self.collect_with(123456)
+        before = sysmon.DATA_FILE.read_bytes()
+        captured = {}
+
+        def fake_wrapper(callback, args):
+            captured["preview_network"] = args.preview_network
+
+        with mock.patch.object(sysmon.sys, "argv", ["sysmon", "--preview-network", "100000GB"]), \
+             mock.patch.object(sysmon, "prompt_first_run_setup") as setup, \
+             mock.patch.object(sysmon.curses, "wrapper", side_effect=fake_wrapper):
+            result = sysmon.main_cli()
+
+        self.assertEqual(result, 0)
+        self.assertEqual(captured["preview_network"], 100_000_000_000_000)
+        setup.assert_not_called()
+        self.assertEqual(sysmon.DATA_FILE.read_bytes(), before)
+
+    def test_network_line_fits_existing_box_width(self):
+        today = datetime.date.today()
+        state = {
+            "created_at": int(datetime.datetime.combine(
+                today - datetime.timedelta(days=10), datetime.time.min
+            ).timestamp()),
+            "settings": {
+                "quota_start_date": (today - datetime.timedelta(days=5)).isoformat(),
+                "limit_bytes": 2_000_000_000_000,
+            },
+            "daily": {today.isoformat(): 125_000_000_000},
+        }
+        line = sysmon.network_status_line(state, "30d", today=today)
+        self.assertLessEqual(len(line), sysmon.BOX_WIDTH - 6)
+        self.assertIn("Quota: 125.0GB / 2000.0GB", line)
+
+
 class FormattingAndPeriodTests(unittest.TestCase):
     def test_decimal_and_binary_size_units(self):
         self.assertEqual(sysmon.parse_size("2TB"), 2_000_000_000_000)
@@ -375,46 +417,6 @@ class FormattingAndPeriodTests(unittest.TestCase):
         )
         self.assertEqual(len(line), sysmon.BOX_WIDTH - 6)
 
-    def test_preview_network_parser_accepts_size_without_modifying_data(self):
-        self.collect_with(123456)
-        before = sysmon.DATA_FILE.read_bytes()
-        args = sysmon.build_parser().parse_args(["--preview-network", "100000GB"])
-        self.assertEqual(sysmon.parse_size(args.preview_network), 100_000_000_000_000)
-        self.assertEqual(sysmon.DATA_FILE.read_bytes(), before)
-
-    def test_preview_network_mode_skips_first_run_setup_and_preserves_json(self):
-        self.collect_with(123456)
-        before = sysmon.DATA_FILE.read_bytes()
-        captured = {}
-
-        def fake_wrapper(callback, args):
-            captured["preview_network"] = args.preview_network
-
-        with mock.patch.object(sysmon.sys, "argv", ["sysmon", "--preview-network", "100000GB"]), \
-             mock.patch.object(sysmon, "prompt_first_run_setup") as setup, \
-             mock.patch.object(sysmon.curses, "wrapper", side_effect=fake_wrapper):
-            result = sysmon.main_cli()
-
-        self.assertEqual(result, 0)
-        self.assertEqual(captured["preview_network"], 100_000_000_000_000)
-        setup.assert_not_called()
-        self.assertEqual(sysmon.DATA_FILE.read_bytes(), before)
-
-    def test_network_line_fits_existing_box_width(self):
-        today = datetime.date.today()
-        state = {
-            "created_at": int(datetime.datetime.combine(
-                today - datetime.timedelta(days=10), datetime.time.min
-            ).timestamp()),
-            "settings": {
-                "quota_start_date": (today - datetime.timedelta(days=5)).isoformat(),
-                "limit_bytes": 2_000_000_000_000,
-            },
-            "daily": {today.isoformat(): 125_000_000_000},
-        }
-        line = sysmon.network_status_line(state, "30d", today=today)
-        self.assertLessEqual(len(line), sysmon.BOX_WIDTH - 6)
-        self.assertIn("Quota: 125.0GB / 2000.0GB", line)
 
 
 if __name__ == "__main__":
