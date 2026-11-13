@@ -107,7 +107,6 @@ class TrafficTests(unittest.TestCase):
 
     def test_atomic_json_round_trip_and_settings(self):
         self.collect_with(1000)
-        start_date = datetime.date.fromtimestamp(self.read_state()["created_at"])
         sysmon.update_settings(
             limit_bytes=2_000_000_000,
             set_limit=True,
@@ -121,8 +120,6 @@ class TrafficTests(unittest.TestCase):
     def test_reset_first_run_setup_preserves_collected_traffic(self):
         self.collect_with(1000)
         today = datetime.date.today()
-        install_date = datetime.date.fromtimestamp(self.read_state()["created_at"])
-        configured_date = max(install_date, today - datetime.timedelta(days=1))
         sysmon.update_settings(
             limit_bytes=2_000_000_000,
             set_limit=True,
@@ -134,6 +131,7 @@ class TrafficTests(unittest.TestCase):
         state["last_counter"] = 123_456_789
         state["interface"] = "eth0"
         state["settings"]["selected_period"] = "last_month"
+        state["settings"]["selected_month"] = today.replace(day=1).isoformat()
         sysmon.atomic_save(state)
 
         sysmon.reset_first_run_setup()
@@ -148,6 +146,7 @@ class TrafficTests(unittest.TestCase):
         self.assertEqual(reset["interface"], state["interface"])
         self.assertEqual(reset["created_at"], state["created_at"])
         self.assertEqual(reset["settings"]["selected_period"], "last_month")
+        self.assertEqual(reset["settings"]["selected_month"], today.replace(day=1).isoformat())
 
     def test_selected_period_persists_and_legacy_state_defaults_to_today(self):
         self.collect_with(1000)
@@ -486,7 +485,6 @@ class FormattingAndPeriodTests(unittest.TestCase):
     def test_monthly_traffic_includes_all_collected_days_since_installation(self):
         install = datetime.date(2026, 1, 1)
         today = datetime.date(2026, 1, 31)
-        quota_start = datetime.date(2026, 1, 15)
         state = {
             "created_at": int(datetime.datetime.combine(install, datetime.time.min).timestamp()),
             "settings": {
