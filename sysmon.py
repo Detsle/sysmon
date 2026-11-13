@@ -462,6 +462,8 @@ def prompt_first_run_setup():
         return
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         raise SysmonError("First-run setup requires an interactive terminal")
+    if not os.access(DATA_FILE.parent, os.W_OK):
+        raise SysmonError("First-run setup needs write access to traffic data. Run: sudo sysmon")
 
     today = datetime.date.today()
     installed_at = datetime.date.fromtimestamp(int(state.get("created_at", time.time())))
@@ -552,6 +554,8 @@ def edit_quota_start_date(stdscr):
         return "Quota start date updated"
     except ValueError as exc:
         return "Invalid date: {}".format(exc)
+    except OSError:
+        return "Cannot save settings; run sysmon with write access"
 
 
 def read_state_for_ui():
@@ -767,7 +771,11 @@ def main_cli():
     if curses is None:
         raise SysmonError("Python was built without curses support; install a Python package with curses enabled")
 
-    prompt_first_run_setup()
+    try:
+        prompt_first_run_setup()
+    except KeyboardInterrupt:
+        print("\\nSetup cancelled. Run sysmon again to complete first-run setup.")
+        return 0
 
     try:
         curses.wrapper(main, args)
