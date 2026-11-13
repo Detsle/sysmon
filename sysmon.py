@@ -888,10 +888,10 @@ def month_history_return_period(previous_period):
 def hotkeys_status_line(period, preview=False):
     """Show only month-navigation and back controls while monthly history is active."""
     if preview:
-        return "P: period   Q: quit   PREVIEW MODE"
+        return "P: period   Esc: exit   PREVIEW MODE"
     if period == "month_history":
-        return "M: current   [ ]: browse   Esc: back"
-    return "P: period   M: months   L: quota   Q: quit"
+        return "C: current   [: prev month   ]: next month   Esc: back"
+    return "P: period   M: months   Q: quota   Esc: exit"
 
 
 def cpu_status_line(cpu, bar):
@@ -1052,9 +1052,6 @@ def main(stdscr, args):
                     hotkey_status_until = time.monotonic() + 5.0
             else:
                 break
-        elif key in (ord("q"), ord("Q")):
-            if current_period != "month_history":
-                break
         elif key in (ord("p"), ord("P")) and current_period != "month_history":
             period_index = (period_index + 1) % len(periods)
             current_period = periods[period_index]
@@ -1066,11 +1063,8 @@ def main(stdscr, args):
                 except (OSError, SysmonError) as exc:
                     hotkey_status = "Cannot save period: {}".format(exc)
                     hotkey_status_until = time.monotonic() + 5.0
-        elif key in (ord("m"), ord("M")) and args.preview_network is None:
-            if current_period == "month_history":
-                selected_month = datetime.date.today().replace(day=1)
-            else:
-                return_period = current_period
+        elif key in (ord("m"), ord("M")) and args.preview_network is None and current_period != "month_history":
+            return_period = current_period
             current_period = "month_history"
             period_index = -1
             hotkey_status = None
@@ -1079,6 +1073,15 @@ def main(stdscr, args):
                 update_settings(selected_period=current_period, selected_month=selected_month)
             except (OSError, SysmonError) as exc:
                 hotkey_status = "Cannot save month: {}".format(exc)
+                hotkey_status_until = time.monotonic() + 5.0
+        elif key in (ord("c"), ord("C")) and args.preview_network is None and current_period == "month_history":
+            selected_month = datetime.date.today().replace(day=1)
+            hotkey_status = None
+            hotkey_status_until = 0.0
+            try:
+                update_settings(selected_period="month_history", selected_month=selected_month)
+            except (OSError, SysmonError) as exc:
+                hotkey_status = "Cannot select current month: {}".format(exc)
                 hotkey_status_until = time.monotonic() + 5.0
         elif key in (ord("["), ord("]")) and args.preview_network is None and current_period == "month_history":
             offset = -1 if key == ord("[") else 1
@@ -1098,7 +1101,7 @@ def main(stdscr, args):
                 except (OSError, SysmonError) as exc:
                     hotkey_status = "Cannot save month: {}".format(exc)
                     hotkey_status_until = time.monotonic() + 5.0
-        elif key in (ord("l"), ord("L")) and args.preview_network is None and current_period != "month_history":
+        elif key in (ord("q"), ord("Q")) and args.preview_network is None and current_period != "month_history":
             hotkey_status = edit_traffic_quota(stdscr)
             hotkey_status_until = time.monotonic() + 5.0
 
