@@ -788,8 +788,16 @@ class FormattingAndPeriodTests(unittest.TestCase):
             self.assertIn("M: months", line)
 
         history_line = sysmon.hotkeys_status_line("month_history")
-        self.assertIn("[ ]: browse", history_line)
-        self.assertIn("M: current", history_line)
+        self.assertEqual(history_line, "M: current   [ ]: browse   Esc: back")
+        for unavailable_action in ("P:", "L:", "Q:"):
+            self.assertNotIn(unavailable_action, history_line)
+
+    def test_month_history_back_target_restores_previous_standard_period(self):
+        for period in sysmon.DEFAULT_PERIODS:
+            with self.subTest(period=period):
+                self.assertEqual(sysmon.month_history_return_period(period), period)
+        self.assertEqual(sysmon.month_history_return_period("month_history"), "today")
+        self.assertEqual(sysmon.month_history_return_period("invalid"), "today")
 
     def test_standard_period_labels_remain_available(self):
         self.assertEqual(sysmon.selected_period_text("7d"), "7 days")
