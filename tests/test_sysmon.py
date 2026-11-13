@@ -52,11 +52,13 @@ class TrafficTests(unittest.TestCase):
         self.assertEqual(result["delta"], 500)
         self.assertEqual(state["daily"][today], 500)
 
-    def test_reboot_resets_baseline_without_negative_or_false_delta(self):
+    def test_reboot_recovers_traffic_sent_since_boot(self):
         self.collect_with(9000, boot=1000)
         result = self.collect_with(100, boot=2000)
         state = self.read_state()
-        self.assertEqual(result["delta"], 0)
+        today = datetime.date.fromtimestamp(state["last_sample"]).isoformat()
+        self.assertEqual(result["delta"], 100)
+        self.assertEqual(state["daily"][today], 100)
         self.assertIn("reboot", [note["event"] for note in state["notes"]])
         self.assertEqual(state["last_counter"], 100)
 
