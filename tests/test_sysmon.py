@@ -98,11 +98,62 @@ class TrafficTests(unittest.TestCase):
 
     def test_atomic_json_round_trip_and_settings(self):
         self.collect_with(1000)
-        sysmon.update_settings(limit_bytes=2_000_000_000_000, set_limit=True, reset_day=15)
+        start_date = datetime.date(2026, 11, 1)
+        sysmon.update_settings(
+            limit_bytes=2_000_000_000,
+            set_limit=True,
+            quota_start_date=start_date,
+            setup_complete=True,
+        )
         state = self.read_state()
-        self.assertEqual(state["settings"]["limit_bytes"], 2_000_000_000_000)
-        self.assertEqual(state["settings"]["reset_day"], 15)
+        self.assertEqual(state["settings"]["limit_bytes"], 2_000_000_000)
+        self.assertEqual(state["settings"]["quota_start_date"], "2026-11-01")
+        self.assertTrue(state["settings"]["setup_complete"])
         self.assertFalse(list(sysmon.DATA_FILE.parent.glob(".traffic.*.tmp")))
+
+    def test_unlimited_is_default_quota(self):
+        self.collect_with(1000)
+        state = self.read_state()
+        self.assertIsNone(state["settings"]["limit_bytes"])
+        self.assertEqual(sysmon.quota_text(state), "Quota: Unlimited")
+
+    def test_quota_uses_selected_start_date(self):
+        self.collect_with(1000)
+        state = self.read_state()
+        state["settings"]["limit_bytes"] = 2_000_000_000
+        state["settings"]["quota_start_date"] = "2026-11-10"
+        state["daily"] = {
+            "2026-11-09": 9_000_000_000,
+            "2026-11-10": 250_000_000,
+            "2026-11-12": 500_000_000,
+            "2026-11-13": 250_000_000,
+        }
+        self.assertEqual(
+            sysmon.quota_text(state, today=datetime.date(2026, 11, 13)),
+            "Quota: 1.00 / 2.00 GB (50.0%)",
+        )
+
+    def test_first_run_setup_defaults_to_today_and_unlimited(self):
+        self.collect_with(1000)
+        with mock.patch.object(sys.stdin, "isatty", return_value=True), \
+             mock.patch.object(sys.stdout, "isatty", return_value=True), \
+             mock.patch("builtins.input", side_effect=["", ""]):
+            sysmon.prompt_first_run_setup()
+        state = self.read_state()
+        self.assertEqual(state["settings"]["quota_start_date"], datetime.date.today().isoformat())
+        self.assertIsNone(state["settings"]["limit_bytes"])
+        self.assertTrue(state["settings"]["setup_complete"])
+
+    def test_first_run_setup_accepts_custom_date_and_quota_gb(self):
+        self.collect_with(1000)
+        with mock.patch.object(sys.stdin, "isatty", return_value=True), \
+             mock.patch.object(sys.stdout, "isatty", return_value=True), \
+             mock.patch("builtins.input", side_effect=["01.11.2026", "2"]):
+            sysmon.prompt_first_run_setup()
+        state = self.read_state()
+        self.assertEqual(state["settings"]["quota_start_date"], "2026-11-01")
+        self.assertEqual(state["settings"]["limit_bytes"], 2_000_000_000)
+        self.assertTrue(state["settings"]["setup_complete"])
 
 
 class FormattingAndPeriodTests(unittest.TestCase):
@@ -130,10 +181,10 @@ class FormattingAndPeriodTests(unittest.TestCase):
             (start, end),
         )
 
-    def test_monthly_quota_reset_day(self):
-        today = datetime.date(2026, 11, 13)
-        self.assertEqual(sysmon.quota_period_start(today, 1), datetime.date(2026, 11, 1))
-        self.assertEqual(sysmon.quota_period_start(today, 15), datetime.date(2026, 10, 15))
+    def test_display_date_requires_dd_mm_yyyy_format(self):
+        self.assertEqual(sysmon.parse_display_date("13.11.2026"), datetime.date(2026, 11, 13))
+        with self.assertRaises(ValueError):
+            sysmon.parse_display_date("2026-11-13")
 
     def test_sum_range_uses_inclusive_dates(self):
         daily = {"2026-11-01": 100, "2026-11-02": 200, "2026-11-03": 300}
