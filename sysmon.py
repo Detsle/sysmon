@@ -601,7 +601,7 @@ def preview_network_status_line(period, value_bytes):
         "custom": "Custom",
     }
     amount = format_gigabytes(value_bytes)
-    quota = format_gigabyte_pair(value_bytes, value_bytes)
+    quota = format_quota_pair(value_bytes, value_bytes)
     fields = [
         "Period: {}".format(period_labels.get(period, period)),
         "Traffic: {}".format(amount),
