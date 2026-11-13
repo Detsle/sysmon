@@ -61,9 +61,7 @@ sysmon --from-date 01-11-26 --to-date 13-11-26
 
 ## Calendar-month Traffic and Quota
 
-On the first launch, Sysmon asks for:
-
-- On first launch, Sysmon asks only for the monthly Traffic quota in decimal Tb. Enter numbers only, such as `0.5`, `4.5`, or `8`, without a unit suffix. Leaving the field blank applies `Unlimited`. Invalid input also falls back to `Unlimited`.
+On the first launch, Sysmon asks only for the monthly Traffic quota in decimal Tb. Enter numbers only, such as `0.5`, `4.5`, or `8`, without a unit suffix. Leaving the field blank applies `Unlimited`. Invalid input also falls back to `Unlimited`.
 - Custom date ranges use `DD-MM-YY`; displayed custom dates use the same format.
 
 Traffic is grouped by calendar months from the actual installation date. The installation month is partial if Sysmon was installed after the first day; it is marked with `*`. From the next month onward, each period starts on the first day and ends on the actual last day of that month. `Month` shows the current calendar month; `Last month` shows the previous one. February contains 28 or 29 days depending on the year, while other months use their actual 30- or 31-day length.
