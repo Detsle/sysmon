@@ -674,7 +674,11 @@ def network_status_line(
             collection_start.day > 1
             and collection_start.replace(day=1) == displayed_month.replace(day=1)
         ):
-            period_label += "*"
+            start_label = "{} {}".format(
+                collection_start.day,
+                MONTH_ABBREVIATIONS[collection_start.month - 1],
+            )
+            period_label += "* (from {})".format(start_label)
 
     fields = [
         "Period: {}".format(period_label),
