@@ -434,7 +434,7 @@ class FormattingAndPeriodTests(unittest.TestCase):
         )
 
     def test_network_box_title_explains_partial_month_marker(self):
-        self.assertIn("* = partial month", " Network (* = partial month) ")
+        self.assertIn("* = partial month", sysmon.NETWORK_BOX_TITLE)
 
     def test_calendar_month_periods_respect_month_lengths_and_leap_years(self):
         self.assertEqual(
