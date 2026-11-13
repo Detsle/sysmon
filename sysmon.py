@@ -365,6 +365,20 @@ def parse_size(value):
     return int(number * multiplier)
 
 
+def parse_quota_size(value):
+    """Parse quota input; a bare number means decimal Gb."""
+    candidate = value.strip()
+    if re.fullmatch(r"\d+(?:\.\d+)?", candidate):
+        candidate += "Gb"
+    try:
+        result = parse_size(candidate)
+    except SysmonError as exc:
+        raise ValueError(str(exc))
+    if result <= 0:
+        raise ValueError("Quota must be greater than zero")
+    return result
+
+
 def update_settings(
     interface=None,
     limit_bytes=None,
@@ -457,15 +471,18 @@ def format_bytes(value):
 
 
 def _scaled_gigabyte_values(values, binary=False):
-    """Scale byte values to Gb or Tb, preserving the source's 1000/1024 base."""
+    """Scale bytes to Gb/Tb using decimal traffic units or binary system units."""
     base = float(1024 ** 3 if binary else 1000 ** 3)
     gigabytes = [
         None if value is None else max(0, int(value)) / base
         for value in values
     ]
-    use_terabytes = max((value or 0.0) for value in gigabytes) >= 1024.0
-    if use_terabytes:
-        return [None if value is None else value / 1024.0 for value in gigabytes], "Tb", 2
+    threshold = 1024.0 if binary else 1000.0
+    if max((value or 0.0) for value in gigabytes) >= threshold:
+        return [
+            None if value is None else value / threshold
+            for value in gigabytes
+        ], "Tb", 2
     return gigabytes, "Gb", 1
 
 
@@ -482,13 +499,14 @@ def format_gigabytes(value, binary=False):
     return "{} {}".format(_format_scaled_amount(values[0], precision), unit)
 
 
-def format_gigabyte_pair(first_bytes, second_bytes, binary=False):
-    """Format two byte counts with one shared Gb/Tb suffix and a vertical separator."""
+def format_gigabyte_pair(first_bytes, second_bytes, binary=False, integer_total=False):
+    """Format two byte counts with one shared unit and a vertical separator."""
     values, unit, precision = _scaled_gigabyte_values(
         [first_bytes, second_bytes], binary=binary
     )
+    total_precision = 0 if integer_total and unit == "Gb" else precision
     first = "-" if values[0] is None else _format_scaled_amount(values[0], precision)
-    second = "-" if values[1] is None else _format_scaled_amount(values[1], precision)
+    second = "-" if values[1] is None else _format_scaled_amount(values[1], total_precision)
     return "{} | {} {}".format(first, second, unit)
 
 
@@ -639,14 +657,13 @@ def prompt_first_run_setup():
     if start_date > today:
         print("Traffic totals will remain unavailable until the selected date.")
 
-    raw_quota = input("Traffic quota in Gb [Unlimited]: ").strip()
+    raw_quota = input(
+        "Traffic quota (Gb/Tb; number defaults to Gb) [Unlimited]: "
+    ).strip()
     limit_bytes = None
     if raw_quota and raw_quota.lower() not in ("unlimited", "none", "off"):
         try:
-            quota_gb = float(raw_quota)
-            if not math.isfinite(quota_gb) or quota_gb <= 0:
-                raise ValueError
-            limit_bytes = int(quota_gb * (1000 ** 3))
+            limit_bytes = parse_quota_size(raw_quota)
         except ValueError:
             print(
                 "Invalid quota. Using Unlimited.",
@@ -731,16 +748,13 @@ def edit_traffic_quota(stdscr):
     state, error = read_state_for_ui()
     if error or state is None:
         return "Traffic data unavailable"
-    prompt = "Quota in Gb [Unlimited]: "
+    prompt = "Quota (Gb/Tb; number defaults to Gb) [Unlimited]: "
     raw = read_hotkey_input(stdscr, prompt, 16)
     limit_bytes = None
     error_message = None
     if raw and raw.lower() not in ("unlimited", "none", "off"):
         try:
-            quota_gb = float(raw)
-            if not math.isfinite(quota_gb) or quota_gb <= 0:
-                raise ValueError
-            limit_bytes = int(quota_gb * (1000 ** 3))
+            limit_bytes = parse_quota_size(raw)
         except ValueError:
             error_message = "Invalid quota. Set to Unlimited."
     try:
@@ -781,22 +795,24 @@ def selected_period_text(period, custom_from=None, custom_to=None):
 
 
 def cpu_status_line(cpu, bar):
-    """Keep the percentage column fixed when the value changes digit width."""
-    return "Usage: {:5.1f}%   Cores: {}".format(cpu, bar)
+    """Keep the CPU value adjacent to Usage and hold Cores at a fixed column."""
+    percentage = "{:.1f}%".format(cpu)
+    padding = " " * max(0, 6 - len(percentage))
+    return "Usage: {}{}   Cores: {}".format(percentage, padding, bar)
 
 
 def memory_status_line(memory_used, memory_total, swap_used, swap_total):
     """Render memory and swap pairs with one shared unit per pair."""
     return "Used: {}   Swap: {}".format(
-        format_gigabyte_pair(memory_used, memory_total, binary=True),
-        format_gigabyte_pair(swap_used, swap_total, binary=True),
+        format_gigabyte_pair(memory_used, memory_total, binary=True, integer_total=True),
+        format_gigabyte_pair(swap_used, swap_total, binary=True, integer_total=True),
     )
 
 
 def disk_status_line(disk_used, disk_total, read_speed, write_speed):
     """Render disk capacity and I/O speeds using consistent separators."""
     return "Used: {}   IO: {:.1f} Mb/s read | {:.1f} Mb/s write".format(
-        format_gigabyte_pair(disk_used, disk_total, binary=True),
+        format_gigabyte_pair(disk_used, disk_total, binary=True, integer_total=True),
         read_speed,
         write_speed,
     )
