@@ -41,15 +41,16 @@ sysmon
 
 В блоке **Network** одной строкой отображаются период, исходящий трафик и квота. Клавиши:
 
-- `P` — переключать Today / 7 days / 1 month / All time. `1 month` — текущий календарный месяц.
-- `M` — открыть историю по календарным месяцам; повторное нажатие возвращает к текущему месяцу.
-- `[` / `]` — перейти на предыдущий / следующий месяц. Эти клавиши показываются и работают только в режиме истории, открытом через `M`.
-- `L` — изменить месячный лимит в Tb или выбрать `Unlimited`.
-- `Q` — выйти.
+- `P` — переключать Today / 7 days / 1 month / All time. `1 month` — текущий календарный месяц; клавиша работает вне истории.
+- `M` — открыть историю по календарным месяцам; внутри истории повторное нажатие возвращает к текущему месяцу.
+- `[` / `]` — перейти на предыдущий / следующий месяц. Клавиши работают только в режиме истории.
+- `Esc` — внутри истории вернуться на предыдущий экран и восстановить открытый до неё период; в обычном режиме выйти из Sysmon.
+- `L` — изменить месячный лимит в Tb или выбрать `Unlimited`; работает вне истории.
+- `Q` — выйти из Sysmon; внутри истории эта клавиша не активна.
 
 Если сбор трафика начинается не с первого числа месяца, этот первый месяц помечается `*` в поле `Period`; значение звёздочки объясняется при первом запуске. Выбранный стандартный период и месяц истории сохраняются в настройках. Если предыдущий сеанс завершился в истории, после нового запуска Sysmon откроется в `Today`; нажатие `M` вернёт к сохранённому месяцу. Внутри истории повторное нажатие `M` возвращает к текущему месяцу.
 
-Блок **Hotkeys** показывает `M: months` в обычном режиме. После открытия истории через `M` появляются подсказки `M: current` и `[ ]: browse`.
+Блок **Hotkeys** показывает `M: months` в обычном режиме. После открытия истории через `M` остаются только `M: current`, `[ ]: browse` и `Esc: back`; возврат восстанавливает предыдущий экран и период.
 
 Для произвольного календарного диапазона:
 
@@ -64,15 +65,16 @@ sysmon --from-date 01-11-26 --to-date 13-11-26
 On the first launch, Sysmon asks only for the monthly Traffic quota in decimal Tb. Enter numbers only, such as `0.5`, `4.5`, or `8`, without a unit suffix. Leaving the field blank applies `Unlimited`. Invalid input also falls back to `Unlimited`.
 - Custom date ranges use `DD-MM-YY`; displayed custom dates use the same format.
 
-Traffic is grouped by calendar months from the start of reliable collection. The first accounting month is partial when collection starts after the first day of that month; it is marked with `*` in the `Period` value. The first-run setup explains this marker. `P` cycles only `Today`, `7 days`, `1 month` (the current calendar month), and `All time`. The `M` key opens calendar-month history; only in that mode are `[` and `]` shown for previous/next month navigation. Month labels use the compact format `Jan ’26`. February contains 28 or 29 days depending on the year, while other months use their actual 30- or 31-day length.
+Traffic is grouped by calendar months from the start of reliable collection. The first accounting month is partial when collection starts after the first day of that month; it is marked with `*` in the `Period` value. The first-run setup explains this marker. `P` cycles only `Today`, `7 days`, `1 month` (the current calendar month), and `All time` outside monthly history. The `M` key opens calendar-month history; only in that mode are `[` and `]` available for previous/next month navigation. Pressing `Esc` returns to the screen and standard period that were active before opening history. While history is open, its only active controls are `M` (current month), `[` / `]` (browse), and `Esc` (back); period switching, quota editing, and quitting are disabled. Month labels use the compact format `Jan ’26`. February contains 28 or 29 days depending on the year, while other months use their actual 30- or 31-day length.
 
-The monthly Quota uses the same calendar boundaries and resets automatically on the first day of each month. The configured limit remains the same each month. The standard selected period and historical month are stored in `traffic.json`; legacy period values that are no longer available through `P` are reset to `Today`. If the previous session ended in monthly history, the next launch starts in `Today`; pressing `M` reopens the saved historical month. While history is open, pressing `M` returns to the current month. When migrating a state file from a build that predates the outbound collector, Sysmon excludes daily records before 13 Nov 2026, the date the collector was introduced. Those older JSON entries are retained but are not included in traffic or quota totals, and month navigation starts at the first reliable collection month.
+The monthly Quota uses the same calendar boundaries and resets automatically on the first day of each month. The configured limit remains the same each month. The standard selected period and historical month are stored in `traffic.json`; legacy period values that are no longer available through `P` are reset to `Today`. If the previous session ended in monthly history, the next launch starts in `Today`; pressing `M` reopens the saved historical month. While history is open, pressing `M` returns to the current month, and `Esc` returns to the standard period that was active before entering history. When migrating a state file from a build that predates the outbound collector, Sysmon excludes daily records before 13 Nov 2026, the date the collector was introduced. Those older JSON entries are retained but are not included in traffic or quota totals, and month navigation starts at the first reliable collection month.
 
 Hotkeys:
 
-- `M` — open monthly history.
-- `[` / `]` — browse previous / next months.
-- `L` — change the monthly quota or set it to `Unlimited`.
+- `M` — open monthly history; while history is open, return to the current month.
+- `[` / `]` — browse previous / next months inside history.
+- `Esc` — return from history to the previous screen; exits Sysmon in the standard view.
+- `L` — change the monthly quota or set it to `Unlimited` in the standard view.
 
 Quota input accepts numeric values only, without `Tb` or other suffixes. Leave the field empty to apply `Unlimited`. Invalid quota input falls back to `Unlimited`. Error messages remain visible for five seconds.
 
