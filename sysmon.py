@@ -612,7 +612,10 @@ def network_status_line(state, period, today=None, custom_from=None, custom_to=N
             "all": "All time",
             "custom": "Custom",
         }
-        fields[0] = "Period: {}".format(compact_labels.get(period, period_label))
+        compact_period = compact_labels.get(period, period_label)
+        if period_label.endswith("*"):
+            compact_period += "*"
+        fields[0] = "Period: {}".format(compact_period)
         line = "  ".join(fields)
     return line
 
@@ -1086,7 +1089,7 @@ def main_cli():
         ))
         return 0
 
-    if any((args.set_limit is not None, args.clear_limit, args.quota_start_date is not None, args.interface is not None, args.period is not None)): 
+    if any((args.set_limit is not None, args.clear_limit, args.quota_start_date is not None, args.interface is not None)):
         limit_bytes = parse_quota_size(args.set_limit) if args.set_limit else None
         interface = args.interface
         if interface is not None and not interface:
