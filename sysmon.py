@@ -410,7 +410,7 @@ def update_settings(
             installed_at = datetime.date.fromtimestamp(int(state.get("created_at", time.time())))
             if quota_start_date < installed_at:
                 raise SysmonError(
-                    "Traffic start date cannot be earlier than installation ({})".format(
+                    "Quota start date cannot be earlier than installation ({})".format(
                         installed_at.strftime("%d-%m-%y")
                     )
                 )
@@ -540,9 +540,15 @@ def format_quota_pair(used_bytes, limit_bytes):
     return "{} | {} Tb".format(used, limit)
 
 
+def data_start_date(state):
+    """Return the first calendar day with data collection, based on installation."""
+    return datetime.date.fromtimestamp(int(state.get("created_at", time.time())))
+
+
 def tracking_start_date(state):
+    """Return the configured quota start, never earlier than data collection."""
     settings = state.get("settings", {})
-    installed_at = datetime.date.fromtimestamp(int(state.get("created_at", time.time())))
+    installed_at = data_start_date(state)
     configured = settings.get("quota_start_date")
     try:
         selected = datetime.date.fromisoformat(configured) if configured else installed_at
@@ -552,14 +558,14 @@ def tracking_start_date(state):
 
 
 def traffic_for_period(state, period, today=None, custom_from=None, custom_to=None):
-    """Return TX bytes in the selected period, clipped to the configured start date."""
+    """Return TX bytes in the selected period, clipped to actual collection start."""
     today = today or datetime.date.today()
     start, end = period_bounds(period, today=today, custom_from=custom_from, custom_to=custom_to)
     end = min(end, today)
-    tracking_start = tracking_start_date(state)
-    if end < tracking_start:
+    collection_start = data_start_date(state)
+    if end < collection_start:
         return None
-    start = max(start, tracking_start)
+    start = max(start, collection_start)
     if start > end:
         return None
     return sum_range(state.get("daily", {}), start, end)
@@ -590,7 +596,7 @@ def network_status_line(state, period, today=None, custom_from=None, custom_to=N
     period_label = selected_period_text(period, custom_from, custom_to)
     if period in ("month", "last_month"):
         period_start, period_end = period_bounds(period, today=today)
-        if tracking_start_date(state) > period_start:
+        if data_start_date(state) > period_start:
             period_label += "*"
     if period == "custom":
         period_label = "Custom"
@@ -667,11 +673,11 @@ def prompt_first_run_setup():
     print("Sysmon first-run setup")
     print("----------------------")
     print("Traffic collection is active since installation.")
-    print("Only traffic collected by Sysmon can be included in quota totals.")
+    print("The date below controls Quota only; Traffic periods include all collected data since installation.")
     print("")
 
     raw_date = input(
-        "Traffic start date (DD-MM-YY, day-month-year) [{}]: ".format(
+        "Quota start date (DD-MM-YY, day-month-year) [{}]: ".format(
             today.strftime("%d-%m-%y")
         )
     ).strip()
@@ -696,7 +702,7 @@ def prompt_first_run_setup():
             time.sleep(5)
 
     if start_date > today:
-        print("Traffic totals will remain unavailable until the selected date.")
+        print("Quota usage will remain unavailable until the selected date.")
 
     raw_quota = input(
         "Traffic quota in Tb [blank = Unlimited]: "
@@ -751,13 +757,13 @@ def read_hotkey_input(stdscr, prompt, max_chars):
 
 
 def edit_quota_start_date(stdscr):
-    """Change the shared start date used by both Traffic and Quota."""
+    """Change the date from which quota usage is accumulated."""
     state, error = read_state_for_ui()
     if error or state is None:
         return "Traffic data unavailable"
     today = datetime.date.today()
     installed_at = datetime.date.fromtimestamp(int(state.get("created_at", time.time())))
-    prompt = "Traffic start date DD-MM-YY [{}]: ".format(today.strftime("%d-%m-%y"))
+    prompt = "Quota start date DD-MM-YY [{}]: ".format(today.strftime("%d-%m-%y"))
     raw = read_hotkey_input(stdscr, prompt, 8)
     selected = today
     error_message = None
@@ -778,8 +784,8 @@ def edit_quota_start_date(stdscr):
         if error_message:
             return error_message
         if selected > today:
-            return "Start date updated; tracking starts {}".format(selected.strftime("%d-%m-%y"))
-        return "Start date set to {}".format(selected.strftime("%d-%m-%y"))
+            return "Quota start date updated; quota starts {}".format(selected.strftime("%d-%m-%y"))
+        return "Quota start date set to {}".format(selected.strftime("%d-%m-%y"))
     except (OSError, SysmonError) as exc:
         return "Cannot save start date: {}".format(exc)
 
@@ -969,7 +975,7 @@ def main(stdscr, args):
             hotkeys_line = "P: period   Q: quit   PREVIEW MODE"
         else:
             hotkey_status = None
-            hotkeys_line = "P: period   D: traffic start date   L: quota   Q: quit"
+            hotkeys_line = "P: period   D: quota start date   L: quota   Q: quit"
         safe_addstr(stdscr, 18, x + 3, hotkeys_line, BOX_WIDTH - 6)
 
         stdscr.noutrefresh()
