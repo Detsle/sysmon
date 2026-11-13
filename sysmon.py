@@ -678,10 +678,11 @@ def network_status_line(
         "Period: {}".format(period_label),
         "Traffic: {}".format(traffic_value),
     ]
-    quota_month = selected_month if period == "month_history" else today.replace(day=1)
-    quota = quota_text(state, today=today, month_start=quota_month)
-    if quota is not None:
-        fields.append(quota)
+    if period not in ("month", "month_history"):
+        quota_month = today.replace(day=1)
+        quota = quota_text(state, today=today, month_start=quota_month)
+        if quota is not None:
+            fields.append(quota)
     line = "  ".join(fields)
     if len(line) > BOX_WIDTH - 6:
         compact_labels = {
