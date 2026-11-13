@@ -27,6 +27,7 @@ VERSION = "0.2.0-dev"
 BOX_WIDTH = 70
 DEFAULT_PERIODS = ("today", "7d", "30d", "month", "last_month", "all")
 SAVED_PERIODS = DEFAULT_PERIODS + ("month_history",)
+NETWORK_BOX_TITLE = " Network (* = partial month) "
 PERIOD_LABELS = {
     "today": "Today",
     "7d": "7 days",
@@ -924,7 +925,7 @@ def main(stdscr, args):
             BOX_WIDTH - 6,
         )
 
-        draw_box(stdscr, " Network (* = partial month) ", 14, 3, BOX_WIDTH, x)
+        draw_box(stdscr, NETWORK_BOX_TITLE, 14, 3, BOX_WIDTH, x)
         if args.preview_network is not None:
             try:
                 network_line = preview_network_status_line(current_period, args.preview_network)
