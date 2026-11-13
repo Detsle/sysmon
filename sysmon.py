@@ -27,9 +27,9 @@ BOX_WIDTH = 70
 DEFAULT_PERIODS = ("today", "7d", "30d", "all")
 PERIOD_LABELS = {
     "today": "Today",
-    "7d": "7 Days",
-    "30d": "30 Days",
-    "all": "All Time",
+    "7d": "7 days",
+    "30d": "30 days",
+    "all": "All time",
 }
 DATA_DIR = Path(os.environ.get("SYSMON_DATA_DIR", "/var/lib/sysmon"))
 DATA_FILE = Path(os.environ.get("SYSMON_DATA_FILE", str(DATA_DIR / "traffic.json")))
@@ -449,23 +449,40 @@ def format_bytes(value):
     value = float(max(0, value))
     if value < 1000:
         return "{} B".format(int(value))
-    for unit in ("KB", "MB", "GB", "TB", "PB"):
+    for unit in ("KB", "Mb", "Gb", "Tb", "PB"):
         value /= 1000.0
         if value < 1000 or unit == "PB":
             return "{:.1f} {}".format(value, unit)
     return "0 B"
 
 
-def format_gigabyte_number(value):
-    """Return a decimal-GB amount rounded to one digit, without a unit suffix."""
-    value = max(0, int(value))
-    tenths = (value + 50_000_000) // 100_000_000
-    return "{:.1f}".format(tenths / 10.0)
+def _scaled_gigabyte_values(values, binary=False):
+    """Scale byte values to Gb or Tb, preserving the source's 1000/1024 base."""
+    base = float(1024 ** 3 if binary else 1000 ** 3)
+    gigabytes = [
+        None if value is None else max(0, int(value)) / base
+        for value in values
+    ]
+    use_terabytes = max((value or 0.0) for value in gigabytes) >= 1024.0
+    if use_terabytes:
+        return [None if value is None else value / 1024.0 for value in gigabytes], "Tb", 2
+    return gigabytes, "Gb", 1
 
 
-def format_gigabytes(value):
-    """Format decimal gigabytes with the technical GB unit."""
-    return format_gigabyte_number(value) + "GB"
+def format_gigabytes(value, binary=False):
+    """Format one byte count as Gb or Tb, with a space before the unit."""
+    values, unit, precision = _scaled_gigabyte_values([value], binary=binary)
+    return "{:.{}f} {}".format(values[0], precision, unit)
+
+
+def format_gigabyte_pair(first_bytes, second_bytes, binary=False):
+    """Format two byte counts with one shared Gb/Tb suffix and a vertical separator."""
+    values, unit, precision = _scaled_gigabyte_values(
+        [first_bytes, second_bytes], binary=binary
+    )
+    first = "-" if values[0] is None else "{:.{}f}".format(values[0], precision)
+    second = "-" if values[1] is None else "{:.{}f}".format(values[1], precision)
+    return "{} | {} {}".format(first, second, unit)
 
 
 def tracking_start_date(state):
@@ -502,9 +519,11 @@ def quota_text(state, today=None):
     today = today or datetime.date.today()
     start = tracking_start_date(state)
     if today < start:
-        return "Quota: - / {}".format(format_gigabytes(limit))
-    used = sum_range(state.get("daily", {}), start, today)
-    return "Quota: {} / {}".format(format_gigabytes(used), format_gigabytes(limit))
+        values = format_gigabyte_pair(None, limit)
+    else:
+        used = sum_range(state.get("daily", {}), start, today)
+        values = format_gigabyte_pair(used, limit)
+    return "Quota: {}".format(values)
 
 
 def network_status_line(state, period, today=None, custom_from=None, custom_to=None):
@@ -527,9 +546,9 @@ def network_status_line(state, period, today=None, custom_from=None, custom_to=N
     if len(line) > BOX_WIDTH - 6:
         compact_labels = {
             "today": "Today",
-            "7d": "7d",
-            "30d": "30d",
-            "all": "All",
+            "7d": "7 days",
+            "30d": "30 days",
+            "all": "All time",
             "custom": "Custom",
         }
         fields[0] = "Period: {}".format(compact_labels.get(period, period_label))
@@ -541,16 +560,17 @@ def preview_network_status_line(period, value_bytes):
     """Build a synthetic Network row for layout testing without reading or writing state."""
     period_labels = {
         "today": "Today",
-        "7d": "7d",
-        "30d": "30d",
-        "all": "All",
+        "7d": "7 days",
+        "30d": "30 days",
+        "all": "All time",
         "custom": "Custom",
     }
     amount = format_gigabytes(value_bytes)
+    quota = format_gigabyte_pair(value_bytes, value_bytes)
     fields = [
         "Period: {}".format(period_labels.get(period, period)),
         "Traffic: {}".format(amount),
-        "Quota: {} / {}".format(amount, amount),
+        "Quota: {}".format(quota),
     ]
     line = "  ".join(fields)
     if len(line) > BOX_WIDTH - 6:
@@ -612,7 +632,7 @@ def prompt_first_run_setup():
     if start_date > today:
         print("Traffic totals will remain unavailable until the selected date.")
 
-    raw_quota = input("Traffic quota in GB [Unlimited]: ").strip()
+    raw_quota = input("Traffic quota in Gb [Unlimited]: ").strip()
     limit_bytes = None
     if raw_quota and raw_quota.lower() not in ("unlimited", "none", "off"):
         try:
@@ -704,7 +724,7 @@ def edit_traffic_quota(stdscr):
     state, error = read_state_for_ui()
     if error or state is None:
         return "Traffic data unavailable"
-    prompt = "Quota in GB [Unlimited]: "
+    prompt = "Quota in Gb [Unlimited]: "
     raw = read_hotkey_input(stdscr, prompt, 16)
     limit_bytes = None
     error_message = None
@@ -753,6 +773,28 @@ def selected_period_text(period, custom_from=None, custom_to=None):
     return PERIOD_LABELS[period]
 
 
+def cpu_status_line(cpu, bar):
+    """Keep the percentage column fixed when the value changes digit width."""
+    return "Usage: {:5.1f}%   Cores: {}".format(cpu, bar)
+
+
+def memory_status_line(memory_used, memory_total, swap_used, swap_total):
+    """Render memory and swap pairs with one shared unit per pair."""
+    return "Used: {}   Swap: {}".format(
+        format_gigabyte_pair(memory_used, memory_total, binary=True),
+        format_gigabyte_pair(swap_used, swap_total, binary=True),
+    )
+
+
+def disk_status_line(disk_used, disk_total, read_speed, write_speed):
+    """Render disk capacity and I/O speeds using consistent separators."""
+    return "Used: {}   IO: {:.1f} Mb/s read | {:.1f} Mb/s write".format(
+        format_gigabyte_pair(disk_used, disk_total, binary=True),
+        read_speed,
+        write_speed,
+    )
+
+
 def main(stdscr, args):
     curses.curs_set(0)
     stdscr.keypad(True)
@@ -793,16 +835,12 @@ def main(stdscr, args):
         filled = int(bar_length * cpu_clamped / 100)
         bar = ("█" * filled + "░" * (bar_length - filled))[:bar_length]
         draw_box(stdscr, " CPU ", 5, 3, BOX_WIDTH, x)
-        safe_addstr(stdscr, 6, x + 3, "Usage: {:.1f}%   Cores: {}".format(cpu, bar), BOX_WIDTH - 6)
+        safe_addstr(stdscr, 6, x + 3, cpu_status_line(cpu, bar), BOX_WIDTH - 6)
 
-        used_gb = round(memory.used / (1024 ** 3), 1)
-        total_gb = round(memory.total / (1024 ** 3), 1)
-        swap_used = round(swap.used / (1024 ** 3), 1)
-        swap_total = round(swap.total / (1024 ** 3), 1)
         draw_box(stdscr, " Memory ", 8, 3, BOX_WIDTH, x)
         safe_addstr(
             stdscr, 9, x + 3,
-            "Used: {}GB / {}GB   Swap: {}GB / {}GB".format(used_gb, total_gb, swap_used, swap_total),
+            memory_status_line(memory.used, memory.total, swap.used, swap.total),
             BOX_WIDTH - 6,
         )
 
@@ -821,9 +859,7 @@ def main(stdscr, args):
         main.previous_io_time = now
         safe_addstr(
             stdscr, 12, x + 3,
-            "Used: {}GB / {}GB   IO: {:.1f}MB/s read / {:.1f}MB/s write".format(
-                round(disk.used / (1024 ** 3), 1), round(disk.total / (1024 ** 3), 1), read_speed, write_speed
-            ),
+            disk_status_line(disk.used, disk.total, read_speed, write_speed),
             BOX_WIDTH - 6,
         )
 
@@ -891,7 +927,7 @@ def build_parser():
     parser.add_argument("--period", choices=DEFAULT_PERIODS, default="7d", help="initial traffic period in the UI")
     parser.add_argument("--from-date", help="custom period start date (YYYY-MM-DD)")
     parser.add_argument("--to-date", help="custom period end date (YYYY-MM-DD)")
-    parser.add_argument("--set-limit", metavar="SIZE", help="set outbound traffic quota, e.g. 2000GB")
+    parser.add_argument("--set-limit", metavar="SIZE", help="set outbound traffic quota, e.g. 2000Gb")
     parser.add_argument("--clear-limit", action="store_true", help="set the traffic quota to Unlimited")
     parser.add_argument("--quota-start-date", metavar="DD.MM.YYYY", help="set the quota calculation start date")
     parser.add_argument(
