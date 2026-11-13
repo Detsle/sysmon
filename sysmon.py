@@ -39,10 +39,6 @@ class SysmonError(Exception):
     """An expected application or configuration error."""
 
 
-def now_local():
-    return datetime.datetime.now().astimezone()
-
-
 def boot_marker():
     """Return a cross-platform marker that changes after an operating-system reboot."""
     return int(psutil.boot_time())
@@ -185,7 +181,7 @@ def empty_state(interface=None):
     return {
         "version": 1,
         "created_at": int(time.time()),
-        "interface": interface,
+        "interface": None,
         "last_counter": None,
         "last_sample": None,
         "boot_marker": boot_marker(),
@@ -463,7 +459,7 @@ def safe_addstr(win, y, x, text, max_width):
 
 def selected_period_text(period, custom_from=None, custom_to=None):
     if period == "custom":
-        return "Custom {} - {}".format(custom_from.strftime("%d.%m"), custom_to.strftime("%d.%m"))
+        return "Custom {} - {}".format(custom_from.strftime("%d.%m.%Y"), custom_to.strftime("%d.%m.%Y"))
     return PERIOD_LABELS[period]
 
 
@@ -474,7 +470,7 @@ def main(stdscr, args):
 
     periods = list(DEFAULT_PERIODS)
     current_period = args.period
-    period_index = periods.index(current_period) if current_period in periods else 1
+    period_index = periods.index(current_period) if current_period in periods else -1
     custom_from = datetime.date.fromisoformat(args.from_date) if args.from_date else None
     custom_to = datetime.date.fromisoformat(args.to_date) if args.to_date else None
 
@@ -569,7 +565,7 @@ def main(stdscr, args):
         key = stdscr.getch()
         if key in (ord("q"), ord("Q"), 27):
             break
-        if key in (ord("p"), ord("P")) and current_period != "custom":
+        if key in (ord("p"), ord("P")):
             period_index = (period_index + 1) % len(periods)
             current_period = periods[period_index]
 
