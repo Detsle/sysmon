@@ -513,6 +513,7 @@ def format_gigabyte_pair(first_bytes, second_bytes, binary=False, integer_total=
 
 def format_quota_pair(used_bytes, limit_bytes):
     """Format quota usage in the same adaptive units as Traffic and the limit in decimal Tb."""
+    terabyte = float(1000 ** 4)
     used = "-" if used_bytes is None else format_gigabytes(max(0, used_bytes))
     limit_full = _format_scaled_amount(max(0, limit_bytes) / terabyte, 2)
     limit = limit_full.rstrip("0").rstrip(".")
