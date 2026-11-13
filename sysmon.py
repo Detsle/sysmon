@@ -313,7 +313,10 @@ def collect_traffic():
         if previous_counter is None:
             message = "baseline initialized"
         elif previous_boot != current_boot:
-            message = "system reboot detected; baseline reset"
+            # Interface counters start over at boot. The current value represents
+            # traffic already sent since this boot and can be recovered safely.
+            delta = counter
+            message = "system reboot detected; traffic since boot recovered"
             state.setdefault("notes", []).append({"time": now, "event": "reboot"})
         elif previous_interface != interface:
             message = "network interface changed; baseline reset"
@@ -323,8 +326,10 @@ def collect_traffic():
         elif counter < int(previous_counter):
             message = "network counter reset; baseline reset"
             state.setdefault("notes", []).append({"time": now, "event": "counter_reset"})
-        else:
+        elif previous_boot == current_boot and previous_interface == interface and counter >= int(previous_counter):
             delta = counter - int(previous_counter)
+
+        if delta > 0:
             day = datetime.date.fromtimestamp(now).isoformat()
             state["daily"][day] = int(state["daily"].get(day, 0)) + delta
 
