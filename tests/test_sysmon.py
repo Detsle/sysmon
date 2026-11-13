@@ -750,6 +750,16 @@ class FormattingAndPeriodTests(unittest.TestCase):
         self.assertTrue(high.startswith("Usage: 100.0%"))
         self.assertEqual(low.index("Cores:"), high.index("Cores:"))
 
+    def test_month_navigation_hotkeys_are_hidden_until_month_history_is_open(self):
+        for period in ("today", "7d", "month", "all"):
+            line = sysmon.hotkeys_status_line(period)
+            self.assertNotIn("[ ]", line)
+            self.assertIn("M: months", line)
+
+        history_line = sysmon.hotkeys_status_line("month_history")
+        self.assertIn("[ ]: browse", history_line)
+        self.assertIn("M: current", history_line)
+
     def test_standard_period_labels_remain_available(self):
         self.assertEqual(sysmon.selected_period_text("7d"), "7 days")
         self.assertEqual(sysmon.selected_period_text("month"), "1 month")
