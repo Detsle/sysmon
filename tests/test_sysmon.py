@@ -262,7 +262,10 @@ class TrafficTests(unittest.TestCase):
             status = sysmon.edit_quota_start_date(None)
         state = self.read_state()
         self.assertEqual(state["settings"]["quota_start_date"], today.isoformat())
-        self.assertIn("Start date set to", status)
+        self.assertEqual(
+            status,
+            "Start date set to {}".format(today.strftime("%d.%m.%Y")),
+        )
 
     def test_invalid_hotkey_date_uses_today(self):
         self.collect_with(1000)
@@ -425,6 +428,10 @@ class FormattingAndPeriodTests(unittest.TestCase):
         self.assertEqual(
             sysmon.period_bounds("custom", custom_from=start, custom_to=end),
             (start, end),
+        )
+        self.assertEqual(
+            sysmon.selected_period_text("custom", custom_from=start, custom_to=end),
+            "Custom 01.11.2026 - 13.11.2026",
         )
 
     def test_cli_custom_period_accepts_dd_mm_yy(self):
