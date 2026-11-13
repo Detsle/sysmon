@@ -798,6 +798,9 @@ class FormattingAndPeriodTests(unittest.TestCase):
         stdscr.keypad.assert_called_once_with(True)
         stdscr.timeout.assert_called_once_with(1000)
 
+    def test_status_notification_duration_defaults_to_three_seconds(self):
+        self.assertEqual(sysmon.HOTKEY_STATUS_DURATION_SECONDS, 3.0)
+
     def test_hotkeys_describe_actions_and_month_navigation_directions(self):
         for period in ("today", "7d", "month", "all"):
             line = sysmon.hotkeys_status_line(period)
