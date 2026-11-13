@@ -207,7 +207,7 @@ class TrafficTests(unittest.TestCase):
         date_prompt = input_mock.call_args_list[0].args[0]
         self.assertEqual(
             date_prompt,
-            "Traffic start date (DD-MM-YY, day-month-year) [{}]: ".format(
+            "Quota start date (DD-MM-YY, day-month-year) [{}]: ".format(
                 datetime.date.today().strftime("%d-%m-%y")
             ),
         )
@@ -278,7 +278,7 @@ class TrafficTests(unittest.TestCase):
         self.assertEqual(state["settings"]["quota_start_date"], today.isoformat())
         self.assertEqual(
             status,
-            "Start date set to {}".format(today.strftime("%d-%m-%y")),
+            "Quota start date set to {}".format(today.strftime("%d-%m-%y")),
         )
 
     def test_invalid_hotkey_date_uses_today(self):
@@ -286,7 +286,7 @@ class TrafficTests(unittest.TestCase):
         today = datetime.date.today()
         with mock.patch.object(sysmon, "read_hotkey_input", return_value="31-02-26") as read_input:
             status = sysmon.edit_quota_start_date(None)
-        self.assertTrue(read_input.call_args.args[1].startswith("Traffic start date DD-MM-YY ["))
+        self.assertTrue(read_input.call_args.args[1].startswith("Quota start date DD-MM-YY ["))
         self.assertEqual(read_input.call_args.args[2], 8)
         state = self.read_state()
         self.assertEqual(state["settings"]["quota_start_date"], today.isoformat())
@@ -353,7 +353,7 @@ class TrafficTests(unittest.TestCase):
         with self.assertRaises(sysmon.SysmonError):
             sysmon.update_settings(quota_start_date=installed_at - datetime.timedelta(days=1))
 
-    def test_future_start_date_is_allowed_and_displays_dashes(self):
+    def test_future_quota_start_does_not_hide_collected_traffic(self):
         self.collect_with(1000)
         future = datetime.date.today() + datetime.timedelta(days=5)
         sysmon.update_settings(
@@ -363,9 +363,9 @@ class TrafficTests(unittest.TestCase):
             setup_complete=True,
         )
         state = self.read_state()
-        self.assertIsNone(sysmon.traffic_for_period(state, "today"))
+        self.assertEqual(sysmon.traffic_for_period(state, "today"), 0)
         self.assertEqual(sysmon.quota_text(state), "Quota: - | 2 Tb")
-        self.assertIn("Traffic: -", sysmon.network_status_line(state, "today"))
+        self.assertIn("Traffic: 0.0 Gb", sysmon.network_status_line(state, "today"))
 
     def test_unlimited_quota_is_hidden_with_future_start_date(self):
         self.collect_with(1000)
@@ -373,7 +373,7 @@ class TrafficTests(unittest.TestCase):
         sysmon.update_settings(quota_start_date=future, limit_bytes=None, set_limit=True)
         state = self.read_state()
         line = sysmon.network_status_line(state, "today")
-        self.assertIn("Traffic: -", line)
+        self.assertIn("Traffic: 0.0 Gb", line)
         self.assertNotIn("Quota:", line)
 
 
@@ -436,6 +436,10 @@ class FormattingAndPeriodTests(unittest.TestCase):
             (datetime.date(2026, 10, 15), today),
         )
 
+    def test_calendar_period_labels_are_available(self):
+        self.assertEqual(sysmon.selected_period_text("month"), "Month")
+        self.assertEqual(sysmon.selected_period_text("last_month"), "Last month")
+
     def test_calendar_month_periods_respect_month_lengths_and_leap_years(self):
         self.assertEqual(
             sysmon.period_bounds("month", today=datetime.date(2026, 2, 13)),
@@ -450,14 +454,35 @@ class FormattingAndPeriodTests(unittest.TestCase):
             (datetime.date(2024, 2, 1), datetime.date(2024, 2, 29)),
         )
 
-    def test_partial_calendar_month_is_marked_and_clipped_to_tracking_start(self):
+    def test_monthly_traffic_ignores_quota_start_date_when_history_exists(self):
         install = datetime.date(2026, 1, 1)
         today = datetime.date(2026, 1, 31)
-        tracking_start = datetime.date(2026, 1, 15)
+        quota_start = datetime.date(2026, 1, 15)
         state = {
             "created_at": int(datetime.datetime.combine(install, datetime.time.min).timestamp()),
             "settings": {
-                "quota_start_date": tracking_start.isoformat(),
+                "quota_start_date": quota_start.isoformat(),
+                "limit_bytes": None,
+            },
+            "daily": {
+                "2026-01-01": 9_000_000_000,
+                "2026-01-14": 8_000_000_000,
+                "2026-01-15": 2_000_000_000,
+                "2026-01-31": 1_000_000_000,
+            },
+        }
+        line = sysmon.network_status_line(state, "month", today=today)
+        self.assertIn("Period: Month", line)
+        self.assertNotIn("Period: Month*", line)
+        self.assertIn("Traffic: 20.0 Gb", line)
+
+    def test_calendar_month_is_partial_only_when_collection_started_mid_month(self):
+        install = datetime.date(2026, 1, 15)
+        today = datetime.date(2026, 1, 31)
+        state = {
+            "created_at": int(datetime.datetime.combine(install, datetime.time.min).timestamp()),
+            "settings": {
+                "quota_start_date": install.isoformat(),
                 "limit_bytes": None,
             },
             "daily": {
@@ -646,21 +671,21 @@ class FormattingAndPeriodTests(unittest.TestCase):
         self.assertEqual(sysmon.selected_period_text("30d"), "30 days")
         self.assertEqual(sysmon.selected_period_text("all"), "All time")
 
-    def test_selected_period_is_clipped_to_tracking_start_date(self):
+    def test_selected_period_is_clipped_to_actual_collection_start(self):
         today = datetime.date.today()
         install = today - datetime.timedelta(days=10)
-        start = today - datetime.timedelta(days=3)
+        quota_start = today - datetime.timedelta(days=3)
         daily = {
-            (start - datetime.timedelta(days=1)).isoformat(): 9_000_000_000,
-            start.isoformat(): 100_000_000,
+            (quota_start - datetime.timedelta(days=1)).isoformat(): 9_000_000_000,
+            quota_start.isoformat(): 100_000_000,
             today.isoformat(): 200_000_000,
         }
         state = {
             "created_at": int(datetime.datetime.combine(install, datetime.time.min).timestamp()),
-            "settings": {"quota_start_date": start.isoformat(), "limit_bytes": None},
+            "settings": {"quota_start_date": quota_start.isoformat(), "limit_bytes": None},
             "daily": daily,
         }
-        self.assertEqual(sysmon.traffic_for_period(state, "all", today=today), 300_000_000)
+        self.assertEqual(sysmon.traffic_for_period(state, "all", today=today), 9_300_000_000)
 
     def test_preview_network_line_fits_100_tb_in_existing_box(self):
         value = sysmon.parse_size("100000GB")
