@@ -530,7 +530,7 @@ class FormattingAndPeriodTests(unittest.TestCase):
             (datetime.date(2024, 2, 1), datetime.date(2024, 2, 29)),
         )
 
-    def test_month_history_shows_selected_month_traffic_and_quota_with_year(self):
+    def test_month_history_shows_selected_month_traffic_without_quota(self):
         install = datetime.date(2026, 1, 1)
         state = {
             "created_at": int(datetime.datetime.combine(install, datetime.time.min).timestamp()),
@@ -548,7 +548,7 @@ class FormattingAndPeriodTests(unittest.TestCase):
         )
         self.assertIn("Period: Jan ’26", line)
         self.assertIn("Traffic: 2.0 Gb", line)
-        self.assertIn("Quota: 2.0 Gb | 8 Tb", line)
+        self.assertNotIn("Quota:", line)
 
     def test_monthly_traffic_includes_all_collected_days_since_installation(self):
         install = datetime.date(2026, 1, 1)
@@ -556,7 +556,7 @@ class FormattingAndPeriodTests(unittest.TestCase):
         state = {
             "created_at": int(datetime.datetime.combine(install, datetime.time.min).timestamp()),
             "settings": {
-                "limit_bytes": None,
+                "limit_bytes": 8_000_000_000_000,
             },
             "daily": {
                 "2026-01-01": 9_000_000_000,
@@ -569,6 +569,7 @@ class FormattingAndPeriodTests(unittest.TestCase):
         self.assertIn("Period: 1 month", line)
         self.assertNotIn("*", line)
         self.assertIn("Traffic: 20.0 Gb", line)
+        self.assertNotIn("Quota:", line)
 
     def test_calendar_month_is_partial_only_when_collection_started_mid_month(self):
         install = datetime.date(2026, 1, 15)
@@ -576,7 +577,7 @@ class FormattingAndPeriodTests(unittest.TestCase):
         state = {
             "created_at": int(datetime.datetime.combine(install, datetime.time.min).timestamp()),
             "settings": {
-                "limit_bytes": None,
+                "limit_bytes": 8_000_000_000_000,
             },
             "daily": {
                 "2026-01-01": 9_000_000_000,
@@ -588,6 +589,7 @@ class FormattingAndPeriodTests(unittest.TestCase):
         line = sysmon.network_status_line(state, "month", today=today)
         self.assertIn("Period: 1 month*", line)
         self.assertIn("Traffic: 3.0 Gb", line)
+        self.assertNotIn("Quota:", line)
 
     def test_month_history_marks_only_the_partial_first_accounting_month(self):
         install = datetime.date(2026, 1, 15)
