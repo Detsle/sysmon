@@ -473,7 +473,7 @@ def prompt_first_run_setup():
     print("")
 
     while True:
-        raw_date = input("Quota start date (DD.MM.YYYY) [{}]: ".format(today.strftime("%d.%m.%Y"))).strip()
+        raw_date = input("Quota start date (DD.MM.YYYY, day/month/year) [{}]: ".format(today.strftime("%d.%m.%Y"))).strip()
         try:
             start_date = parse_display_date(raw_date) if raw_date else today
             if start_date > today:
@@ -522,7 +522,7 @@ def edit_quota_start_date(stdscr):
 
     height, _ = stdscr.getmaxyx()
     row = height - 1
-    prompt = "Quota start date (DD.MM.YYYY) [{}]: ".format(current_date.strftime("%d.%m.%Y"))
+    prompt = "Quota start date (DD.MM.YYYY, day/month/year) [{}]: ".format(current_date.strftime("%d.%m.%Y"))
     stdscr.move(row, 0)
     stdscr.clrtoeol()
     safe_addstr(stdscr, row, 0, prompt, max(1, len(prompt)))
