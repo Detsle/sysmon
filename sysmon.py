@@ -679,7 +679,7 @@ def preview_network_status_line(period, value_bytes):
 
 
 def prompt_first_run_setup():
-    """Ask once for quota start date and quota limit; collector is already active."""
+    """Ask once for the monthly quota limit; collector is already active."""
     state = load_state()
     if state is None:
         collect_traffic()
@@ -691,42 +691,12 @@ def prompt_first_run_setup():
     if not os.access(DATA_FILE.parent, os.W_OK):
         raise SysmonError("First-run setup needs write access to traffic data. Run: sudo sysmon")
 
-    today = datetime.date.today()
-    installed_at = datetime.date.fromtimestamp(int(state.get("created_at", time.time())))
     print("")
     print("Sysmon first-run setup")
     print("----------------------")
     print("Traffic collection is active since installation.")
-    print("The date below controls Quota only; Traffic periods include all collected data since installation.")
+    print("Traffic and quota usage are grouped by calendar month.")
     print("")
-
-    raw_date = input(
-        "Quota start date (DD-MM-YY, day-month-year) [{}]: ".format(
-            today.strftime("%d-%m-%y")
-        )
-    ).strip()
-    start_date = today
-    if raw_date:
-        try:
-            entered_date = parse_display_date(raw_date)
-            if entered_date < installed_at:
-                raise ValueError(
-                    "Date cannot be earlier than installation ({})".format(
-                        installed_at.strftime("%d-%m-%y")
-                    )
-                )
-            start_date = entered_date
-        except ValueError as exc:
-            print(
-                "Invalid date: {}. Using today's date ({}).".format(
-                    exc, today.strftime("%d-%m-%y")
-                ),
-                flush=True,
-            )
-            time.sleep(5)
-
-    if start_date > today:
-        print("Quota usage will remain unavailable until the selected date.")
 
     raw_quota = input(
         "Traffic quota in Tb [blank = Unlimited]: "
@@ -745,7 +715,6 @@ def prompt_first_run_setup():
     update_settings(
         limit_bytes=limit_bytes,
         set_limit=True,
-        quota_start_date=start_date,
         setup_complete=True,
     )
     print("Settings saved.")
@@ -778,40 +747,6 @@ def read_hotkey_input(stdscr, prompt, max_chars):
         except curses.error:
             pass
     return value
-
-
-def edit_quota_start_date(stdscr):
-    """Change the date from which quota usage is accumulated."""
-    state, error = read_state_for_ui()
-    if error or state is None:
-        return "Traffic data unavailable"
-    today = datetime.date.today()
-    installed_at = datetime.date.fromtimestamp(int(state.get("created_at", time.time())))
-    prompt = "Quota start date DD-MM-YY [{}]: ".format(today.strftime("%d-%m-%y"))
-    raw = read_hotkey_input(stdscr, prompt, 8)
-    selected = today
-    error_message = None
-    if raw:
-        try:
-            entered_date = parse_display_date(raw)
-            if entered_date < installed_at:
-                raise ValueError(
-                    "Date cannot be earlier than installation ({})".format(
-                        installed_at.strftime("%d-%m-%y")
-                    )
-                )
-            selected = entered_date
-        except ValueError:
-            error_message = "Invalid date; using today's date"
-    try:
-        update_settings(quota_start_date=selected, setup_complete=True)
-        if error_message:
-            return error_message
-        if selected > today:
-            return "Quota start date updated; quota starts {}".format(selected.strftime("%d-%m-%y"))
-        return "Quota start date set to {}".format(selected.strftime("%d-%m-%y"))
-    except (OSError, SysmonError) as exc:
-        return "Cannot save start date: {}".format(exc)
 
 
 def edit_traffic_quota(stdscr):
