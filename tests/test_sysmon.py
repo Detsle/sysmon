@@ -416,7 +416,7 @@ class FormattingAndPeriodTests(unittest.TestCase):
                 self.assertLessEqual(len(line), sysmon.BOX_WIDTH - 6)
                 self.assertIn("Period: {}".format(label), line)
                 self.assertIn("Traffic: 100.00 Tb", line)
-                self.assertIn("Quota: 100.00 | 100.00 Tb", line)
+                self.assertIn("Quota: 100.00 | 100 Tb", line)
 
     def test_memory_and_disk_totals_are_rounded_to_integers(self):
         gib = 1024 ** 3
@@ -536,7 +536,7 @@ class FormattingAndPeriodTests(unittest.TestCase):
         line = sysmon.preview_network_status_line("30d", value)
         self.assertEqual(
             line,
-            "Period: 30 days  Traffic: 100.00 Tb  Quota: 100.00 | 100.00 Tb",
+            "Period: 30 days  Traffic: 100.00 Tb  Quota: 100.00 | 100 Tb",
         )
         self.assertLessEqual(len(line), sysmon.BOX_WIDTH - 6)
 
@@ -545,7 +545,7 @@ class FormattingAndPeriodTests(unittest.TestCase):
         line = sysmon.preview_network_status_line("today", value)
         self.assertEqual(
             line,
-            "Period: Today  Traffic: 100.00 Tb  Quota: 100.00 | 100.00 Tb",
+            "Period: Today  Traffic: 100.00 Tb  Quota: 100.00 | 100 Tb",
         )
         self.assertLessEqual(len(line), sysmon.BOX_WIDTH - 6)
 
