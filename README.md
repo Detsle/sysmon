@@ -47,7 +47,7 @@ sysmon
 - `L` — изменить месячный лимит в Tb или выбрать `Unlimited`.
 - `Q` — выйти.
 
-Выбранный стандартный период и месяц истории сохраняются в настройках. Если предыдущий сеанс завершился в истории, после нового запуска Sysmon откроется в `Today`; нажатие `M` вернёт к сохранённому месяцу. Внутри истории повторное нажатие `M` возвращает к текущему месяцу.
+Если сбор трафика начинается не с первого числа месяца, этот первый месяц помечается `*` в поле `Period`; значение звёздочки объясняется при первом запуске. Выбранный стандартный период и месяц истории сохраняются в настройках. Если предыдущий сеанс завершился в истории, после нового запуска Sysmon откроется в `Today`; нажатие `M` вернёт к сохранённому месяцу. Внутри истории повторное нажатие `M` возвращает к текущему месяцу.
 
 Блок **Hotkeys** показывает `M: months` в обычном режиме. После открытия истории через `M` появляются подсказки `M: current` и `[ ]: browse`.
 
@@ -64,7 +64,7 @@ sysmon --from-date 01-11-26 --to-date 13-11-26
 On the first launch, Sysmon asks only for the monthly Traffic quota in decimal Tb. Enter numbers only, such as `0.5`, `4.5`, or `8`, without a unit suffix. Leaving the field blank applies `Unlimited`. Invalid input also falls back to `Unlimited`.
 - Custom date ranges use `DD-MM-YY`; displayed custom dates use the same format.
 
-Traffic is grouped by calendar months from the start of reliable collection. The installation month may be partial because collection starts on the installation date; this is explained during first-run setup and is not marked with an asterisk in the Network panel. `P` cycles only `Today`, `7 days`, `1 month` (the current calendar month), and `All time`. The `M` key opens calendar-month history; only in that mode are `[` and `]` shown for previous/next month navigation. Month labels use the compact format `Jan ’26`. February contains 28 or 29 days depending on the year, while other months use their actual 30- or 31-day length.
+Traffic is grouped by calendar months from the start of reliable collection. The first accounting month is partial when collection starts after the first day of that month; it is marked with `*` in the `Period` value. The first-run setup explains this marker. `P` cycles only `Today`, `7 days`, `1 month` (the current calendar month), and `All time`. The `M` key opens calendar-month history; only in that mode are `[` and `]` shown for previous/next month navigation. Month labels use the compact format `Jan ’26`. February contains 28 or 29 days depending on the year, while other months use their actual 30- or 31-day length.
 
 The monthly Quota uses the same calendar boundaries and resets automatically on the first day of each month. The configured limit remains the same each month. The standard selected period and historical month are stored in `traffic.json`; legacy period values that are no longer available through `P` are reset to `Today`. If the previous session ended in monthly history, the next launch starts in `Today`; pressing `M` reopens the saved historical month. While history is open, pressing `M` returns to the current month. When migrating a state file from a build that predates the outbound collector, Sysmon excludes daily records before 13 Nov 2026, the date the collector was introduced. Those older JSON entries are retained but are not included in traffic or quota totals, and month navigation starts at the first reliable collection month.
 
