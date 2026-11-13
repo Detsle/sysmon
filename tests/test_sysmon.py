@@ -166,7 +166,7 @@ class TrafficTests(unittest.TestCase):
         }
         self.assertEqual(
             sysmon.quota_text(state, today=today),
-            "Quota: 1.0GB / 2.0GB",
+            "Quota: 1.0 | 2.0 Gb",
         )
 
     def test_first_run_setup_defaults_to_today_and_unlimited(self):
@@ -273,7 +273,7 @@ class TrafficTests(unittest.TestCase):
         )
         state = self.read_state()
         self.assertIsNone(sysmon.traffic_for_period(state, "today"))
-        self.assertEqual(sysmon.quota_text(state), "Quota: - / 2.0GB")
+        self.assertEqual(sysmon.quota_text(state), "Quota: - | 2.0 Gb")
         self.assertIn("Traffic: -", sysmon.network_status_line(state, "today"))
 
     def test_unlimited_quota_is_hidden_with_future_start_date(self):
@@ -325,7 +325,7 @@ class TrafficTests(unittest.TestCase):
         }
         line = sysmon.network_status_line(state, "30d", today=today)
         self.assertLessEqual(len(line), sysmon.BOX_WIDTH - 6)
-        self.assertIn("Quota: 125.0GB / 2000.0GB", line)
+        self.assertIn("Quota: 0.12 | 1.95 Tb", line)
 
 
 class FormattingAndPeriodTests(unittest.TestCase):
@@ -358,7 +358,7 @@ class FormattingAndPeriodTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             sysmon.parse_display_date("2026-11-13")
 
-    def test_100_tb_values_fit_network_row_in_gigabytes(self):
+    def test_100_tb_values_fit_today_and_30_days_network_rows(self):
         today = datetime.date.today()
         install = today - datetime.timedelta(days=10)
         amount = 100_000 * 1_000_000_000
@@ -370,17 +370,38 @@ class FormattingAndPeriodTests(unittest.TestCase):
             },
             "daily": {today.isoformat(): amount},
         }
-        line = sysmon.network_status_line(state, "30d", today=today)
-        self.assertLessEqual(len(line), sysmon.BOX_WIDTH - 6)
-        self.assertIn("Period: 30d", line)
-        self.assertIn("Traffic: 100000.0GB", line)
-        self.assertIn("Quota: 100000.0GB / 100000.0GB", line)
+        for period, label in (("today", "Today"), ("30d", "30 days")):
+            with self.subTest(period=period):
+                line = sysmon.network_status_line(state, period, today=today)
+                self.assertLessEqual(len(line), sysmon.BOX_WIDTH - 6)
+                self.assertIn("Period: {}".format(label), line)
+                self.assertIn("Traffic: 97.66 Tb", line)
+                self.assertIn("Quota: 97.66 | 97.66 Tb", line)
 
-    def test_memory_and_disk_labels_use_gb_not_g(self):
-        source = Path(sysmon.__file__).read_text(encoding="utf-8")
-        self.assertIn("Used: {}GB / {}GB   Swap: {}GB / {}GB", source)
-        self.assertIn("Used: {}GB / {}GB   IO:", source)
-        self.assertNotIn("{}G / {}G", source)
+    def test_memory_and_disk_metrics_use_shared_units_and_pipe_separators(self):
+        gib = 1024 ** 3
+        memory_line = sysmon.memory_status_line(
+            gib,
+            round(7.8 * gib),
+            0,
+            8 * gib,
+        )
+        self.assertEqual(
+            memory_line,
+            "Used: 1.0 | 7.8 Gb   Swap: 0.0 | 8.0 Gb",
+        )
+
+        disk_line = sysmon.disk_status_line(
+            round(29.4 * gib),
+            round(147.6 * gib),
+            0.0,
+            0.0,
+        )
+        self.assertEqual(
+            disk_line,
+            "Used: 29.4 | 147.6 Gb   IO: 0.0 Mb/s read | 0.0 Mb/s write",
+        )
+        self.assertLessEqual(len(disk_line), sysmon.BOX_WIDTH - 6)
 
     def test_sum_range_uses_inclusive_dates(self):
         daily = {"2026-11-01": 100, "2026-11-02": 200, "2026-11-03": 300}
@@ -388,9 +409,38 @@ class FormattingAndPeriodTests(unittest.TestCase):
         self.assertEqual(total, 500)
 
     def test_traffic_is_formatted_in_decimal_gb_to_one_digit(self):
-        self.assertEqual(sysmon.format_gigabytes(3_000_000), "0.0GB")
-        self.assertEqual(sysmon.format_gigabytes(100_000_000), "0.1GB")
-        self.assertEqual(sysmon.format_gigabytes(1_250_000_000), "1.3GB")
+        self.assertEqual(sysmon.format_gigabytes(3_000_000), "0.0 Gb")
+        self.assertEqual(sysmon.format_gigabytes(100_000_000), "0.1 Gb")
+        self.assertEqual(sysmon.format_gigabytes(1_250_000_000), "1.3 Gb")
+
+    def test_gigabytes_convert_to_terabytes_at_1024_gb(self):
+        self.assertEqual(sysmon.format_gigabytes(1_023_900_000_000), "1023.9 Gb")
+        self.assertEqual(sysmon.format_gigabytes(1_024_000_000_000), "1.00 Tb")
+        self.assertEqual(
+            sysmon.format_gigabyte_pair(1_024_000_000_000, 5_500_000_000),
+            "1.00 | 0.01 Tb",
+        )
+        self.assertEqual(
+            sysmon.format_gigabyte_pair(1024 * (1024 ** 3), 5 * (1024 ** 3), binary=True),
+            "1.00 | 0.00 Tb",
+        )
+
+    def test_format_bytes_uses_requested_mb_gb_tb_casing(self):
+        self.assertEqual(sysmon.format_bytes(1_000_000), "1.0 Mb")
+        self.assertEqual(sysmon.format_bytes(1_000_000_000), "1.0 Gb")
+        self.assertEqual(sysmon.format_bytes(1_000_000_000_000), "1.0 Tb")
+
+    def test_cpu_percentage_field_has_fixed_width(self):
+        low = sysmon.cpu_status_line(0.0, "█" * 50)
+        high = sysmon.cpu_status_line(100.0, "█" * 50)
+        self.assertEqual(low.index("%"), high.index("%"))
+        self.assertEqual(low[7:12], "  0.0")
+        self.assertEqual(high[7:12], "100.0")
+
+    def test_period_labels_use_requested_lowercase_style(self):
+        self.assertEqual(sysmon.selected_period_text("7d"), "7 days")
+        self.assertEqual(sysmon.selected_period_text("30d"), "30 days")
+        self.assertEqual(sysmon.selected_period_text("all"), "All time")
 
     def test_selected_period_is_clipped_to_tracking_start_date(self):
         today = datetime.date.today()
@@ -413,9 +463,18 @@ class FormattingAndPeriodTests(unittest.TestCase):
         line = sysmon.preview_network_status_line("30d", value)
         self.assertEqual(
             line,
-            "Period: 30d  Traffic: 100000.0GB  Quota: 100000.0GB / 100000.0GB",
+            "Period: 30 days  Traffic: 97.66 Tb  Quota: 97.66 | 97.66 Tb",
         )
-        self.assertEqual(len(line), sysmon.BOX_WIDTH - 6)
+        self.assertLessEqual(len(line), sysmon.BOX_WIDTH - 6)
+
+    def test_preview_100_tb_today_period_does_not_raise_layout_error(self):
+        value = sysmon.parse_size("100000GB")
+        line = sysmon.preview_network_status_line("today", value)
+        self.assertEqual(
+            line,
+            "Period: Today  Traffic: 97.66 Tb  Quota: 97.66 | 97.66 Tb",
+        )
+        self.assertLessEqual(len(line), sysmon.BOX_WIDTH - 6)
 
 
 
