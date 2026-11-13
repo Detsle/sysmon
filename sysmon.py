@@ -537,6 +537,31 @@ def network_status_line(state, period, today=None, custom_from=None, custom_to=N
     return line
 
 
+def preview_network_status_line(period, value_bytes):
+    """Build a synthetic Network row for layout testing without reading or writing state."""
+    period_labels = {
+        "today": "Today",
+        "7d": "7d",
+        "30d": "30d",
+        "all": "All",
+        "custom": "Custom",
+    }
+    amount = format_gigabytes(value_bytes)
+    fields = [
+        "Period: {}".format(period_labels.get(period, period)),
+        "Traffic: {}".format(amount),
+        "Quota: {} / {}".format(amount, amount),
+    ]
+    line = "  ".join(fields)
+    if len(line) > BOX_WIDTH - 6:
+        raise SysmonError(
+            "Preview values exceed the current Network row width ({}/{})".format(
+                len(line), BOX_WIDTH - 6
+            )
+        )
+    return line
+
+
 def prompt_first_run_setup():
     """Ask once for quota start date and quota limit; collector is already active."""
     state = load_state()
@@ -803,26 +828,35 @@ def main(stdscr, args):
         )
 
         draw_box(stdscr, " Network ", 14, 3, BOX_WIDTH, x)
-        state, state_error = read_state_for_ui()
-        if state_error:
-            network_line = "Traffic data unavailable"
-        elif state is None:
-            network_line = "Traffic collector is not initialized"
-        else:
+        if args.preview_network is not None:
             try:
-                network_line = network_status_line(
-                    state, current_period, custom_from=custom_from, custom_to=custom_to
-                )
-                last_sample = state.get("last_sample")
-                if last_sample and time.time() - int(last_sample) > 180:
-                    network_line += " [OLD]"
-            except (SysmonError, ValueError, TypeError) as exc:
-                network_line = "Traffic data unavailable: {}".format(exc)
+                network_line = preview_network_status_line(current_period, args.preview_network)
+            except SysmonError as exc:
+                network_line = "Preview unavailable: {}".format(exc)
+        else:
+            state, state_error = read_state_for_ui()
+            if state_error:
+                network_line = "Traffic data unavailable"
+            elif state is None:
+                network_line = "Traffic collector is not initialized"
+            else:
+                try:
+                    network_line = network_status_line(
+                        state, current_period, custom_from=custom_from, custom_to=custom_to
+                    )
+                    last_sample = state.get("last_sample")
+                    if last_sample and time.time() - int(last_sample) > 180:
+                        network_line += " [OLD]"
+                except (SysmonError, ValueError, TypeError) as exc:
+                    network_line = "Traffic data unavailable: {}".format(exc)
         safe_addstr(stdscr, 15, x + 3, network_line, BOX_WIDTH - 6)
 
         draw_box(stdscr, " Hotkeys ", 17, 3, BOX_WIDTH, x)
         if hotkey_status and time.monotonic() < hotkey_status_until:
             hotkeys_line = hotkey_status
+        elif args.preview_network is not None:
+            hotkey_status = None
+            hotkeys_line = "P: period   Q: quit   PREVIEW MODE"
         else:
             hotkey_status = None
             hotkeys_line = "P: period   D: traffic start date   L: quota   Q: quit"
@@ -837,10 +871,10 @@ def main(stdscr, args):
         if key in (ord("p"), ord("P")):
             period_index = (period_index + 1) % len(periods)
             current_period = periods[period_index]
-        elif key in (ord("d"), ord("D")):
+        elif key in (ord("d"), ord("D")) and args.preview_network is None:
             hotkey_status = edit_quota_start_date(stdscr)
             hotkey_status_until = time.monotonic() + 5.0
-        elif key in (ord("l"), ord("L")):
+        elif key in (ord("l"), ord("L")) and args.preview_network is None:
             hotkey_status = edit_traffic_quota(stdscr)
             hotkey_status_until = time.monotonic() + 5.0
 
@@ -849,6 +883,11 @@ def build_parser():
     parser = argparse.ArgumentParser(description="Lightweight Unix system monitor")
     parser.add_argument("--version", action="version", version="Sysmon {}".format(VERSION))
     parser.add_argument("--collect", action="store_true", help="collect one outbound traffic sample and exit")
+    parser.add_argument(
+        "--preview-network",
+        metavar="SIZE",
+        help="preview the Network row with synthetic Traffic and Quota values; does not change stored data",
+    )
     parser.add_argument("--period", choices=DEFAULT_PERIODS, default="7d", help="initial traffic period in the UI")
     parser.add_argument("--from-date", help="custom period start date (YYYY-MM-DD)")
     parser.add_argument("--to-date", help="custom period end date (YYYY-MM-DD)")
@@ -884,6 +923,24 @@ def main_cli():
         parser.error("--set-limit and --clear-limit cannot be used together")
     if args.set_limit and parse_size(args.set_limit) <= 0:
         parser.error("--set-limit must be greater than zero")
+
+    preview_network_bytes = None
+    if args.preview_network is not None:
+        try:
+            preview_network_bytes = parse_size(args.preview_network)
+            if preview_network_bytes <= 0:
+                raise ValueError("size must be greater than zero")
+        except (SysmonError, ValueError) as exc:
+            parser.error("invalid --preview-network: {}".format(exc))
+        if any((
+            args.collect,
+            args.reset_setup,
+            args.set_limit is not None,
+            args.clear_limit,
+            args.quota_start_date is not None,
+            args.interface is not None,
+        )):
+            parser.error("--preview-network cannot be combined with collector or settings options")
 
     if args.reset_setup:
         if any((
@@ -943,11 +1000,14 @@ def main_cli():
     if curses is None:
         raise SysmonError("Python was built without curses support; install a Python package with curses enabled")
 
-    try:
-        prompt_first_run_setup()
-    except KeyboardInterrupt:
-        print("\\nSetup cancelled. Run sysmon again to complete first-run setup.")
-        return 0
+    if args.preview_network is None:
+        try:
+            prompt_first_run_setup()
+        except KeyboardInterrupt:
+            print("\\nSetup cancelled. Run sysmon again to complete first-run setup.")
+            return 0
+    else:
+        args.preview_network = preview_network_bytes
 
     try:
         curses.wrapper(main, args)
