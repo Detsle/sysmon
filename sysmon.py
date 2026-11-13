@@ -195,7 +195,8 @@ def empty_state():
         "settings": {
             "interface": "auto",
             "limit_bytes": None,
-            "reset_day": 1,
+            "quota_start_date": datetime.date.today().isoformat(),
+            "setup_complete": False,
         },
         "notes": [],
     }
@@ -216,19 +217,25 @@ def load_state():
     state.setdefault("notes", [])
     state["settings"].setdefault("interface", "auto")
     state["settings"].setdefault("limit_bytes", None)
-    state["settings"].setdefault("reset_day", 1)
+    state["settings"].setdefault(
+        "quota_start_date",
+        datetime.date.fromtimestamp(int(state.get("created_at", time.time()))).isoformat(),
+    )
+    state["settings"].setdefault("setup_complete", False)
     if not isinstance(state["settings"].get("interface"), str):
         raise SysmonError("traffic.json contains an invalid interface setting")
     try:
-        reset_day = int(state["settings"].get("reset_day", 1))
         limit = state["settings"].get("limit_bytes")
         limit = int(limit) if limit is not None else None
+        quota_start = datetime.date.fromisoformat(state["settings"]["quota_start_date"])
     except (TypeError, ValueError):
         raise SysmonError("traffic.json contains invalid quota settings")
-    if not 1 <= reset_day <= 31 or (limit is not None and limit <= 0):
+    if limit is not None and limit <= 0:
         raise SysmonError("traffic.json contains invalid quota settings")
-    state["settings"]["reset_day"] = reset_day
+    if quota_start > datetime.date.today():
+        raise SysmonError("traffic.json contains a quota start date in the future")
     state["settings"]["limit_bytes"] = limit
+    state["settings"]["setup_complete"] = bool(state["settings"]["setup_complete"])
     return state
 
 
@@ -355,7 +362,14 @@ def parse_size(value):
     return int(number * multiplier)
 
 
-def update_settings(interface=None, limit_bytes=None, set_limit=False, reset_day=None, clear_limit=False):
+def update_settings(
+    interface=None,
+    limit_bytes=None,
+    set_limit=False,
+    clear_limit=False,
+    quota_start_date=None,
+    setup_complete=None,
+):
     with StateLock():
         state = load_state()
         if state is None:
@@ -367,8 +381,10 @@ def update_settings(interface=None, limit_bytes=None, set_limit=False, reset_day
             settings["limit_bytes"] = limit_bytes
         if clear_limit:
             settings["limit_bytes"] = None
-        if reset_day is not None:
-            settings["reset_day"] = reset_day
+        if quota_start_date is not None:
+            settings["quota_start_date"] = quota_start_date.isoformat()
+        if setup_complete is not None:
+            settings["setup_complete"] = bool(setup_complete)
         atomic_save(state)
 
 
@@ -399,27 +415,11 @@ def period_bounds(period, today=None, custom_from=None, custom_to=None):
     raise SysmonError("Invalid traffic period")
 
 
-def previous_month(year, month):
-    if month == 1:
-        return year - 1, 12
-    return year, month - 1
-
-
-def month_day(year, month, requested_day):
-    if month == 12:
-        next_month = datetime.date(year + 1, 1, 1)
-    else:
-        next_month = datetime.date(year, month + 1, 1)
-    last_day = (next_month - datetime.timedelta(days=1)).day
-    return datetime.date(year, month, min(requested_day, last_day))
-
-
-def quota_period_start(today, reset_day):
-    this_start = month_day(today.year, today.month, reset_day)
-    if today >= this_start:
-        return this_start
-    year, month = previous_month(today.year, today.month)
-    return month_day(year, month, reset_day)
+def parse_display_date(value):
+    """Parse the user-facing DD.MM.YYYY date format."""
+    if not re.fullmatch(r"\d{2}\.\d{2}\.\d{4}", value):
+        raise ValueError("Use DD.MM.YYYY format")
+    return datetime.datetime.strptime(value, "%d.%m.%Y").date()
 
 
 def format_bytes(value):
@@ -436,14 +436,111 @@ def format_bytes(value):
 def quota_text(state, today=None):
     settings = state.get("settings", {})
     limit = settings.get("limit_bytes")
-    if not limit:
-        return "Quota: not configured"
+    if limit is None:
+        return "Quota: Unlimited"
     today = today or datetime.date.today()
-    reset_day = int(settings.get("reset_day", 1))
-    start = quota_period_start(today, reset_day)
-    used = sum_range(state.get("daily", {}), start, today)
+    start_text = settings.get("quota_start_date")
+    try:
+        start = datetime.date.fromisoformat(start_text) if start_text else today
+    except ValueError:
+        start = today
+    used = sum_range(state.get("daily", {}), start, today) if start <= today else 0
+    used_gb = used / float(1000 ** 3)
+    limit_gb = int(limit) / float(1000 ** 3)
     percent = (used / float(limit)) * 100.0 if limit else 0.0
-    return "Quota: {} / {} ({:.1f}%)".format(format_bytes(used), format_bytes(limit), percent)
+    return "Quota: {:.2f} / {:.2f} GB ({:.1f}%)".format(used_gb, limit_gb, percent)
+
+
+def prompt_first_run_setup():
+    """Ask once for quota start date and quota limit; collector is already active."""
+    state = load_state()
+    if state is None:
+        collect_traffic()
+        state = load_state()
+    if state and state.get("settings", {}).get("setup_complete"):
+        return
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        raise SysmonError("First-run setup requires an interactive terminal")
+
+    today = datetime.date.today()
+    installed_at = datetime.date.fromtimestamp(int(state.get("created_at", time.time())))
+    print("")
+    print("Sysmon first-run setup")
+    print("----------------------")
+    print("Traffic collection is active since installation.")
+    print("Only traffic collected by Sysmon can be included in quota totals.")
+    print("")
+
+    while True:
+        raw_date = input("Quota start date (DD.MM.YYYY) [{}]: ".format(today.strftime("%d.%m.%Y"))).strip()
+        try:
+            start_date = parse_display_date(raw_date) if raw_date else today
+            if start_date > today:
+                raise ValueError("Date cannot be in the future")
+            break
+        except ValueError as exc:
+            print("Invalid date: {}.".format(exc))
+
+    if start_date < installed_at:
+        print("Note: traffic before {} cannot be restored.".format(installed_at.strftime("%d.%m.%Y")))
+
+    while True:
+        raw_quota = input("Traffic quota in GB [Unlimited]: ").strip()
+        if not raw_quota or raw_quota.lower() in ("unlimited", "none", "off"):
+            limit_bytes = None
+            break
+        try:
+            quota_gb = float(raw_quota)
+            if quota_gb <= 0:
+                raise ValueError
+            limit_bytes = int(quota_gb * (1000 ** 3))
+            break
+        except ValueError:
+            print("Enter a positive number of GB, or press Enter for Unlimited.")
+
+    update_settings(
+        limit_bytes=limit_bytes,
+        set_limit=True,
+        quota_start_date=start_date,
+        setup_complete=True,
+    )
+    print("Settings saved.")
+    print("")
+
+
+def edit_quota_start_date(stdscr):
+    """Prompt for a new quota calculation start date from the curses UI."""
+    state, error = read_state_for_ui()
+    if error or state is None:
+        return "Traffic data unavailable"
+    current = state.get("settings", {}).get("quota_start_date") or datetime.date.today().isoformat()
+    try:
+        current_date = datetime.date.fromisoformat(current)
+    except ValueError:
+        current_date = datetime.date.today()
+
+    height, _ = stdscr.getmaxyx()
+    row = height - 1
+    prompt = "Quota start date (DD.MM.YYYY) [{}]: ".format(current_date.strftime("%d.%m.%Y"))
+    stdscr.move(row, 0)
+    stdscr.clrtoeol()
+    safe_addstr(stdscr, row, 0, prompt, max(1, len(prompt)))
+    stdscr.refresh()
+    curses.echo()
+    try:
+        raw = stdscr.getstr(row, len(prompt), 10).decode("utf-8", "replace").strip()
+    finally:
+        curses.noecho()
+    if not raw:
+        return "Quota start date unchanged"
+    try:
+        selected = parse_display_date(raw)
+        if selected > datetime.date.today():
+            raise ValueError("Date cannot be in the future")
+        update_settings(quota_start_date=selected, setup_complete=True)
+        return "Quota start date updated"
+    except ValueError as exc:
+        return "Invalid date: {}".format(exc)
 
 
 def read_state_for_ui():
@@ -488,8 +585,8 @@ def main(stdscr, args):
     while True:
         height, width = stdscr.getmaxyx()
         stdscr.erase()
-        if width < BOX_WIDTH + 2 or height < 20:
-            safe_addstr(stdscr, 0, 0, "Terminal too small: need at least 72x20", max(1, width - 1))
+        if width < BOX_WIDTH + 2 or height < 22:
+            safe_addstr(stdscr, 0, 0, "Terminal too small: need at least 72x22", max(1, width - 1))
             stdscr.refresh()
             stdscr.getch()
             continue
@@ -546,19 +643,21 @@ def main(stdscr, args):
             BOX_WIDTH - 6,
         )
 
-        draw_box(stdscr, " Network ", 14, 5, BOX_WIDTH, x)
+        draw_box(stdscr, " Network ", 14, 4, BOX_WIDTH, x)
         state, state_error = read_state_for_ui()
         if state_error:
             first_line = "Traffic data unavailable"
             second_line = state_error
         elif state is None:
             first_line = "Traffic collector is not initialized"
-            second_line = "Run the installer or sysmon --collect"
+            second_line = "Run the installer to initialize traffic collection"
         else:
             try:
                 start_date, end_date = period_bounds(current_period, custom_from=custom_from, custom_to=custom_to)
                 outgoing = sum_range(state.get("daily", {}), start_date, end_date)
-                first_line = "Period: {}   Out: {}".format(selected_period_text(current_period, custom_from, custom_to), format_bytes(outgoing))
+                first_line = "Period: {}   Traffic: {}".format(
+                    selected_period_text(current_period, custom_from, custom_to), format_bytes(outgoing)
+                )
                 second_line = quota_text(state)
                 last_sample = state.get("last_sample")
                 if last_sample and time.time() - int(last_sample) > 180:
@@ -566,10 +665,12 @@ def main(stdscr, args):
             except (SysmonError, ValueError, TypeError) as exc:
                 first_line = "Traffic data unavailable"
                 second_line = str(exc)
-        safe_addstr(stdscr, 15, x + 3, first_line + "   [P: period]", BOX_WIDTH - 6)
+        safe_addstr(stdscr, 15, x + 3, first_line, BOX_WIDTH - 6)
         safe_addstr(stdscr, 16, x + 3, second_line, BOX_WIDTH - 6)
 
-        safe_addstr(stdscr, 19, x + 3, "Q: quit", BOX_WIDTH - 6)
+        draw_box(stdscr, " Hotkeys ", 18, 3, BOX_WIDTH, x)
+        safe_addstr(stdscr, 19, x + 3, "P: period   D: quota start date   Q: quit", BOX_WIDTH - 6)
+
         stdscr.noutrefresh()
         curses.doupdate()
 
@@ -579,6 +680,11 @@ def main(stdscr, args):
         if key in (ord("p"), ord("P")):
             period_index = (period_index + 1) % len(periods)
             current_period = periods[period_index]
+        elif key in (ord("d"), ord("D")):
+            status = edit_quota_start_date(stdscr)
+            safe_addstr(stdscr, height - 1, 0, status, width - 1)
+            stdscr.refresh()
+            time.sleep(1)
 
 
 def build_parser():
@@ -588,9 +694,9 @@ def build_parser():
     parser.add_argument("--period", choices=DEFAULT_PERIODS, default="7d", help="initial traffic period in the UI")
     parser.add_argument("--from-date", help="custom period start date (YYYY-MM-DD)")
     parser.add_argument("--to-date", help="custom period end date (YYYY-MM-DD)")
-    parser.add_argument("--set-limit", metavar="SIZE", help="set monthly outbound quota, e.g. 2TB or 500GB")
-    parser.add_argument("--clear-limit", action="store_true", help="remove the configured traffic quota")
-    parser.add_argument("--reset-day", type=int, help="monthly quota reset day (1-31)")
+    parser.add_argument("--set-limit", metavar="SIZE", help="set outbound traffic quota, e.g. 2000GB")
+    parser.add_argument("--clear-limit", action="store_true", help="set the traffic quota to Unlimited")
+    parser.add_argument("--quota-start-date", metavar="DD.MM.YYYY", help="set the quota calculation start date")
     parser.add_argument("--interface", help="set outbound interface name, or 'auto'")
     return parser
 
@@ -611,9 +717,6 @@ def main_cli():
             parser.error("--from-date must not be later than --to-date")
         args.period = "custom"
 
-    if args.reset_day is not None and not 1 <= args.reset_day <= 31:
-        parser.error("--reset-day must be between 1 and 31")
-
     if args.set_limit and args.clear_limit:
         parser.error("--set-limit and --clear-limit cannot be used together")
     if args.set_limit and parse_size(args.set_limit) <= 0:
@@ -626,23 +729,34 @@ def main_cli():
         ))
         return 0
 
-    if any((args.set_limit is not None, args.clear_limit, args.reset_day is not None, args.interface is not None)):
+    if any((args.set_limit is not None, args.clear_limit, args.quota_start_date is not None, args.interface is not None)):
         limit_bytes = parse_size(args.set_limit) if args.set_limit else None
         interface = args.interface
         if interface is not None and not interface:
             parser.error("--interface must be a name or 'auto'")
+        quota_start_date = None
+        if args.quota_start_date:
+            try:
+                quota_start_date = parse_display_date(args.quota_start_date)
+                if quota_start_date > datetime.date.today():
+                    raise ValueError("Date cannot be in the future")
+            except ValueError as exc:
+                parser.error("invalid --quota-start-date: {}".format(exc))
         update_settings(
             interface=interface,
             limit_bytes=limit_bytes,
             set_limit=args.set_limit is not None,
-            reset_day=args.reset_day,
             clear_limit=args.clear_limit,
+            quota_start_date=quota_start_date,
+            setup_complete=(args.set_limit is not None or args.clear_limit or quota_start_date is not None),
         )
         print("Sysmon settings updated.")
         return 0
 
     if curses is None:
         raise SysmonError("Python was built without curses support; install a Python package with curses enabled")
+
+    prompt_first_run_setup()
 
     try:
         curses.wrapper(main, args)
