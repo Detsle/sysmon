@@ -84,6 +84,16 @@ sysmon --clear-limit
 
 Settings are stored in `traffic.json`. Run configuration commands as `root` or through `sudo`/`doas`; regular users only need read access to the statistics.
 
+## Network layout preview
+
+To inspect how large Traffic and Quota values fit into the existing Network panel, run:
+
+```sh
+sysmon --preview-network 100000GB
+```
+
+This opens the normal curses interface with synthetic Network values. The supplied size is shown as Traffic and as both used/limit Quota values. Press `P` to cycle through periods and `Q` to exit. Preview mode skips first-run setup and disables date/quota editing. It does not read or modify the saved traffic history, quota settings, or collector baseline. Any supported size can be supplied, for example `500GB`, `2TB`, or `100000GB`.
+
 ## Reset first-run setup
 
 For testing the first-run prompts, reset only the date/quota setup:
