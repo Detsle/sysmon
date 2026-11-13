@@ -805,8 +805,8 @@ class FormattingAndPeriodTests(unittest.TestCase):
         stdscr.keypad.assert_called_once_with(True)
         stdscr.timeout.assert_called_once_with(1000)
 
-    def test_status_message_duration_defaults_to_three_seconds(self):
-        self.assertEqual(sysmon.STATUS_MESSAGE_DURATION_SECONDS, 3.0)
+    def test_status_message_duration_defaults_to_two_seconds(self):
+        self.assertEqual(sysmon.STATUS_MESSAGE_DURATION_SECONDS, 2.0)
 
     def test_quota_prompt_input_field_stays_inside_hotkeys_box(self):
         stdscr = mock.Mock()
@@ -826,7 +826,7 @@ class FormattingAndPeriodTests(unittest.TestCase):
         )
         self.assertEqual(
             sysmon.QUOTA_INPUT_PROMPT,
-            "Monthly limit (Tb) [X or X.X; blank = Unlimited]: ",
+            "Monthly quota (Tb) [X or X.X; blank = Unlimited]: ",
         )
 
     def test_hotkeys_describe_actions_and_month_navigation_directions(self):
