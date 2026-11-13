@@ -190,6 +190,13 @@ class TrafficTests(unittest.TestCase):
         self.assertEqual(state["settings"]["quota_start_date"], datetime.date.today().isoformat())
         self.assertIsNone(state["settings"]["limit_bytes"])
         self.assertTrue(state["settings"]["setup_complete"])
+        date_prompt = input_mock.call_args_list[0].args[0]
+        self.assertEqual(
+            date_prompt,
+            "Traffic start date (DD.MM.YY, day/month/year) [{}]: ".format(
+                datetime.date.today().strftime("%d.%m.%Y")
+            ),
+        )
         quota_prompt = input_mock.call_args_list[1].args[0]
         self.assertEqual(quota_prompt, "Traffic quota in Tb [blank = Unlimited]: ")
 
