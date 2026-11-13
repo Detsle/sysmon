@@ -201,7 +201,7 @@ class TrafficTests(unittest.TestCase):
         future_start = datetime.date.today() + datetime.timedelta(days=5)
         with mock.patch.object(sysmon.sys, "stdin", FakeTTY()), \
              mock.patch.object(sysmon.sys, "stdout", FakeTTY()), \
-             mock.patch("builtins.input", side_effect=[future_start.strftime("%d.%m.%Y"), "2"]):
+             mock.patch("builtins.input", side_effect=[future_start.strftime("%d.%m.%y"), "2"]):
             sysmon.prompt_first_run_setup()
         state = self.read_state()
         self.assertEqual(state["settings"]["quota_start_date"], future_start.isoformat())
@@ -227,7 +227,7 @@ class TrafficTests(unittest.TestCase):
     def test_first_run_invalid_date_and_quota_use_defaults(self):
         self.collect_with(1000)
         installed_at = datetime.date.fromtimestamp(self.read_state()["created_at"])
-        invalid_date = (installed_at - datetime.timedelta(days=1)).strftime("%d.%m.%Y")
+        invalid_date = (installed_at - datetime.timedelta(days=1)).strftime("%d.%m.%y")
 
         class FakeTTY(io.StringIO):
             def isatty(self):
@@ -260,8 +260,10 @@ class TrafficTests(unittest.TestCase):
     def test_invalid_hotkey_date_uses_today(self):
         self.collect_with(1000)
         today = datetime.date.today()
-        with mock.patch.object(sysmon, "read_hotkey_input", return_value="31.02.2026"):
+        with mock.patch.object(sysmon, "read_hotkey_input", return_value="31.02.26") as read_input:
             status = sysmon.edit_quota_start_date(None)
+        self.assertTrue(read_input.call_args.args[1].startswith("Traffic start date DD.MM.YY ["))
+        self.assertEqual(read_input.call_args.args[2], 8)
         state = self.read_state()
         self.assertEqual(state["settings"]["quota_start_date"], today.isoformat())
         self.assertIn("Invalid date", status)
@@ -418,10 +420,20 @@ class FormattingAndPeriodTests(unittest.TestCase):
             (start, end),
         )
 
-    def test_display_date_requires_dd_mm_yyyy_format(self):
-        self.assertEqual(sysmon.parse_display_date("13.11.2026"), datetime.date(2026, 11, 13))
-        with self.assertRaises(ValueError):
-            sysmon.parse_display_date("2026-11-13")
+    def test_cli_custom_period_accepts_dd_mm_yy(self):
+        args = sysmon.build_parser().parse_args([
+            "--from-date", "01.11.26", "--to-date", "13.11.26"
+        ])
+        start = sysmon.parse_display_date(args.from_date)
+        end = sysmon.parse_display_date(args.to_date)
+        self.assertEqual(start, datetime.date(2026, 11, 1))
+        self.assertEqual(end, datetime.date(2026, 11, 13))
+
+    def test_display_date_requires_dd_mm_yy_format(self):
+        self.assertEqual(sysmon.parse_display_date("13.11.26"), datetime.date(2026, 11, 13))
+        for invalid in ("13.11.2026", "2026-11-13", "31.02.26"):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                sysmon.parse_display_date(invalid)
 
     def test_100_tb_values_fit_today_and_30_days_network_rows(self):
         today = datetime.date.today()
