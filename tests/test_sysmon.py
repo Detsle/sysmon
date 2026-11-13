@@ -588,7 +588,7 @@ class FormattingAndPeriodTests(unittest.TestCase):
             },
         }
         line = sysmon.network_status_line(state, "month", today=today)
-        self.assertIn("Period: 1 month* (from 15 Jan)", line)
+        self.assertIn("Period: 1 month [*15.01.26]", line)
         self.assertIn("Traffic: 3.0 Gb", line)
         self.assertNotIn("Quota:", line)
         self.assertLessEqual(len(line), sysmon.BOX_WIDTH - 6)
@@ -616,7 +616,7 @@ class FormattingAndPeriodTests(unittest.TestCase):
             today=datetime.date(2026, 2, 15),
             selected_month=datetime.date(2026, 2, 1),
         )
-        self.assertIn("Period: Jan ’26* (from 15 Jan)", first_month)
+        self.assertIn("Period: Jan ’26 [*15.01.26]", first_month)
         self.assertIn("Traffic: 2.0 Gb", first_month)
         self.assertIn("Period: Feb ’26", following_month)
         self.assertNotIn("*", following_month)
