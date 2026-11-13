@@ -42,7 +42,7 @@ sysmon
 В блоке **Network** одной строкой отображаются период, исходящий трафик и квота. Клавиши:
 
 - `P` — переключить период (Today / 7 days / 30 days / Month / Last month / All time); выбранный период сохраняется при выходе.
-- `D` — изменить дату начала отображения трафика и расчёта квоты.
+- `D` — изменить дату начала расчёта квоты.
 - `L` — изменить квоту в Tb или выбрать `Unlimited`.
 - `Q` — выйти.
 
@@ -56,14 +56,14 @@ sysmon --from-date 01-11-26 --to-date 13-11-26
 
 Даты включаются в расчёт целиком. Формат ввода и отображения дат — `DD-MM-YY`; двузначный год трактуется как 2000–2099.
 
-## Traffic start date and quota
+## Quota start date and Traffic periods
 
 On the first launch, Sysmon asks for:
 
 - Quota start date input and all displayed dates use `DD-MM-YY` format (day-month-year); the default is the current date. Blank or invalid input uses today's date.
 - Traffic quota in decimal Tb; enter numbers only, such as `0.5`, `4.5`, or `8`. Do not add a unit suffix. Leaving the quota field blank applies `Unlimited`. Invalid input also falls back to `Unlimited`.
 
-The start date cannot be earlier than the installation date. A future start date is allowed: Traffic and a configured Quota usage display `-` until that date. The selected date affects Quota usage only. Traffic periods include all stored daily data from the actual collection start (the installation date), even when the quota cycle starts later. The selected period is stored in `traffic.json`; older state files without this setting default to `Today`. The `Month` period covers the first day of the current calendar month through today; `Last month` covers the previous calendar month using its actual number of days, including leap days. A trailing `*` marks a calendar month whose data is partial because Sysmon collection was installed after its first day. The quota cycle start date does not make the monthly Traffic report partial. Use a custom date range to inspect any completed historical month. Invalid-input messages remain visible for five seconds.
+The quota start date cannot be earlier than the installation date. A future start date is allowed: Quota usage displays `-` until that date, while Traffic continues to show collected data. The selected date affects Quota usage only. Traffic periods include all stored daily data from the actual collection start (the installation date), even when the quota cycle starts later. The selected period is stored in `traffic.json`; older state files without this setting default to `Today`. The `Month` period covers the first day of the current calendar month through today; `Last month` covers the previous calendar month using its actual number of days, including leap days. A trailing `*` marks a calendar month whose data is partial because Sysmon collection was installed after its first day. The quota cycle start date does not make the monthly Traffic report partial. Use a custom date range to inspect any completed historical month. Invalid-input messages remain visible for five seconds.
 
 Hotkeys:
 
@@ -103,7 +103,7 @@ sudo sysmon --reset-setup
 sudo sysmon
 ```
 
-The next launch asks for the Traffic start date and quota again. The reset restores the start-date default to the current date and the quota to `Unlimited`. It preserves the collected daily traffic, installation timestamp, selected network interface, and collector baseline. It does not restart or reset background traffic collection.
+The next launch asks for the Quota start date and quota again. The reset restores the quota start-date default to the current date and the quota to `Unlimited`. It preserves the collected daily traffic, installation timestamp, selected network interface, and collector baseline. It does not restart or reset background traffic collection.
 
 ## Сетевой интерфейс
 
