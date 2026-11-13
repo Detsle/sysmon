@@ -1,4 +1,5 @@
 import datetime
+import io
 import json
 import sys
 import tempfile
@@ -135,7 +136,7 @@ class TrafficTests(unittest.TestCase):
 
     def test_first_run_setup_defaults_to_today_and_unlimited(self):
         self.collect_with(1000)
-        class FakeTTY:
+        class FakeTTY(io.StringIO):
             def isatty(self):
                 return True
         with mock.patch.object(sysmon.sys, "stdin", FakeTTY()), \
