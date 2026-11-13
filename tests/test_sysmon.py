@@ -212,7 +212,7 @@ class TrafficTests(unittest.TestCase):
 
         state = self.read_state()
         self.assertEqual(state["settings"]["limit_bytes"], 8_000_000_000_000)
-        self.assertEqual(sysmon.quota_text(state), "Quota: 0.0 | 8.00 Tb")
+        self.assertEqual(sysmon.quota_text(state), "Quota: 0.00 | 8.00 Tb")
 
     def test_first_run_invalid_date_and_quota_use_defaults(self):
         self.collect_with(1000)
@@ -278,7 +278,7 @@ class TrafficTests(unittest.TestCase):
             status = sysmon.edit_traffic_quota(None)
         state = self.read_state()
         self.assertEqual(state["settings"]["limit_bytes"], 8_000_000_000_000)
-        self.assertEqual(sysmon.quota_text(state), "Quota: 0.0 | 8.00 Tb")
+        self.assertEqual(sysmon.quota_text(state), "Quota: 0.00 | 8.00 Tb")
         self.assertEqual(status, "Quota updated")
 
     def test_cli_set_limit_bare_number_defaults_to_gb(self):
