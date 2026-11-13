@@ -760,7 +760,7 @@ def main(stdscr, args):
                 )
                 last_sample = state.get("last_sample")
                 if last_sample and time.time() - int(last_sample) > 180:
-                    network_line += "  [STALE]"
+                    network_line += " [OLD]"
             except (SysmonError, ValueError, TypeError) as exc:
                 network_line = "Traffic data unavailable: {}".format(exc)
         safe_addstr(stdscr, 15, x + 3, network_line, BOX_WIDTH - 6)
