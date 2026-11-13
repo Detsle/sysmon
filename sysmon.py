@@ -454,10 +454,10 @@ def period_bounds(period, today=None, custom_from=None, custom_to=None):
 
 
 def parse_display_date(value):
-    """Parse the user-facing DD.MM.YYYY date format."""
-    if not re.fullmatch(r"\d{2}\.\d{2}\.\d{4}", value):
-        raise ValueError("Use DD.MM.YYYY format")
-    return datetime.datetime.strptime(value, "%d.%m.%Y").date()
+    """Parse the user-facing DD.MM.YY date format."""
+    if not re.fullmatch(r"\d{2}\.\d{2}\.\d{2}", value):
+        raise ValueError("Use DD.MM.YY format")
+    return datetime.datetime.strptime(value, "%d.%m.%y").date()
 
 
 def format_bytes(value):
@@ -643,7 +643,7 @@ def prompt_first_run_setup():
     print("")
 
     raw_date = input(
-        "Traffic start date (DD.MM.YYYY, day/month/year) [{}]: ".format(
+        "Traffic start date (DD.MM.YY, day/month/year) [{}]: ".format(
             today.strftime("%d.%m.%Y")
         )
     ).strip()
@@ -729,8 +729,8 @@ def edit_quota_start_date(stdscr):
         return "Traffic data unavailable"
     today = datetime.date.today()
     installed_at = datetime.date.fromtimestamp(int(state.get("created_at", time.time())))
-    prompt = "Traffic start date DD.MM.YYYY [{}]: ".format(today.strftime("%d.%m.%Y"))
-    raw = read_hotkey_input(stdscr, prompt, 10)
+    prompt = "Traffic start date DD.MM.YY [{}]: ".format(today.strftime("%d.%m.%Y"))
+    raw = read_hotkey_input(stdscr, prompt, 8)
     selected = today
     error_message = None
     if raw:
@@ -961,15 +961,15 @@ def build_parser():
         help="preview the Network row with synthetic Traffic and Quota values; does not change stored data",
     )
     parser.add_argument("--period", choices=DEFAULT_PERIODS, default="7d", help="initial traffic period in the UI")
-    parser.add_argument("--from-date", help="custom period start date (YYYY-MM-DD)")
-    parser.add_argument("--to-date", help="custom period end date (YYYY-MM-DD)")
+    parser.add_argument("--from-date", metavar="DD.MM.YY", help="custom period start date")
+    parser.add_argument("--to-date", metavar="DD.MM.YY", help="custom period end date")
     parser.add_argument(
         "--set-limit",
         metavar="TB",
         help="set outbound traffic quota in decimal Tb (numeric value only), e.g. 0.5, 4.5, or 8",
     )
     parser.add_argument("--clear-limit", action="store_true", help="set the traffic quota to Unlimited")
-    parser.add_argument("--quota-start-date", metavar="DD.MM.YYYY", help="set the quota calculation start date")
+    parser.add_argument("--quota-start-date", metavar="DD.MM.YY", help="set the quota calculation start date")
     parser.add_argument(
         "--reset-setup",
         action="store_true",
@@ -987,10 +987,10 @@ def main_cli():
         if not (args.from_date and args.to_date):
             parser.error("--from-date and --to-date must be used together")
         try:
-            start = datetime.date.fromisoformat(args.from_date)
-            end = datetime.date.fromisoformat(args.to_date)
-        except ValueError:
-            parser.error("dates must use YYYY-MM-DD format")
+            start = parse_display_date(args.from_date)
+            end = parse_display_date(args.to_date)
+        except ValueError as exc:
+            parser.error("dates must use DD.MM.YY format: {}".format(exc))
         if start > end:
             parser.error("--from-date must not be later than --to-date")
         args.period = "custom"
