@@ -151,7 +151,7 @@ class TrafficTests(unittest.TestCase):
     def test_quota_uses_selected_start_date(self):
         self.collect_with(1000)
         state = self.read_state()
-        state["settings"]["limit_bytes"] = 2_000_000_000
+        state["settings"]["limit_bytes"] = 2_000_000_000_000
         today = datetime.date.today()
         start = today - datetime.timedelta(days=3)
         state["created_at"] = int(datetime.datetime.combine(
@@ -159,14 +159,14 @@ class TrafficTests(unittest.TestCase):
         ).timestamp())
         state["settings"]["quota_start_date"] = start.isoformat()
         state["daily"] = {
-            (start - datetime.timedelta(days=1)).isoformat(): 9_000_000_000,
-            start.isoformat(): 250_000_000,
-            (today - datetime.timedelta(days=1)).isoformat(): 500_000_000,
-            today.isoformat(): 250_000_000,
+            (start - datetime.timedelta(days=1)).isoformat(): 9_000_000_000_000,
+            start.isoformat(): 250_000_000_000,
+            (today - datetime.timedelta(days=1)).isoformat(): 500_000_000_000,
+            today.isoformat(): 250_000_000_000,
         }
         self.assertEqual(
             sysmon.quota_text(state, today=today),
-            "Quota: 1.0 | 2.0 Gb",
+            "Quota: 1.00 | 2 Tb",
         )
 
     def test_first_run_setup_defaults_to_today_and_unlimited(self):
@@ -183,7 +183,7 @@ class TrafficTests(unittest.TestCase):
         self.assertIsNone(state["settings"]["limit_bytes"])
         self.assertTrue(state["settings"]["setup_complete"])
 
-    def test_first_run_setup_accepts_custom_date_and_quota_gb(self):
+    def test_first_run_setup_accepts_custom_date_and_quota_tb(self):
         self.collect_with(1000)
         class FakeTTY(io.StringIO):
             def isatty(self):
@@ -195,10 +195,10 @@ class TrafficTests(unittest.TestCase):
             sysmon.prompt_first_run_setup()
         state = self.read_state()
         self.assertEqual(state["settings"]["quota_start_date"], future_start.isoformat())
-        self.assertEqual(state["settings"]["limit_bytes"], 2_000_000_000)
+        self.assertEqual(state["settings"]["limit_bytes"], 2_000_000_000_000)
         self.assertTrue(state["settings"]["setup_complete"])
 
-    def test_first_run_quota_8000_gb_is_stored_as_8_tb(self):
+    def test_first_run_quota_bare_number_is_interpreted_as_tb(self):
         self.collect_with(1000)
 
         class FakeTTY(io.StringIO):
@@ -207,12 +207,12 @@ class TrafficTests(unittest.TestCase):
 
         with mock.patch.object(sysmon.sys, "stdin", FakeTTY()), \
              mock.patch.object(sysmon.sys, "stdout", FakeTTY()), \
-             mock.patch("builtins.input", side_effect=["", "8000"]):
+             mock.patch("builtins.input", side_effect=["", "8"]):
             sysmon.prompt_first_run_setup()
 
         state = self.read_state()
         self.assertEqual(state["settings"]["limit_bytes"], 8_000_000_000_000)
-        self.assertEqual(sysmon.quota_text(state), "Quota: 0.00 | 8.00 Tb")
+        self.assertEqual(sysmon.quota_text(state), "Quota: 0.00 | 8 Tb")
 
     def test_first_run_invalid_date_and_quota_use_defaults(self):
         self.collect_with(1000)
@@ -278,12 +278,12 @@ class TrafficTests(unittest.TestCase):
             status = sysmon.edit_traffic_quota(None)
         state = self.read_state()
         self.assertEqual(state["settings"]["limit_bytes"], 8_000_000_000_000)
-        self.assertEqual(sysmon.quota_text(state), "Quota: 0.00 | 8.00 Tb")
+        self.assertEqual(sysmon.quota_text(state), "Quota: 0.00 | 8 Tb")
         self.assertEqual(status, "Quota updated")
 
-    def test_cli_set_limit_bare_number_defaults_to_gb(self):
+    def test_cli_set_limit_bare_number_defaults_to_tb(self):
         self.collect_with(1000)
-        for quota_input in ("8000", "8Tb"):
+        for quota_input in ("8", "8Tb"):
             with self.subTest(quota_input=quota_input), \
                  mock.patch.object(sysmon.sys, "argv", ["sysmon", "--set-limit", quota_input]), \
                  mock.patch("builtins.print"):
@@ -303,13 +303,13 @@ class TrafficTests(unittest.TestCase):
         future = datetime.date.today() + datetime.timedelta(days=5)
         sysmon.update_settings(
             quota_start_date=future,
-            limit_bytes=2_000_000_000,
+            limit_bytes=2_000_000_000_000,
             set_limit=True,
             setup_complete=True,
         )
         state = self.read_state()
         self.assertIsNone(sysmon.traffic_for_period(state, "today"))
-        self.assertEqual(sysmon.quota_text(state), "Quota: - | 2.0 Gb")
+        self.assertEqual(sysmon.quota_text(state), "Quota: - | 2 Tb")
         self.assertIn("Traffic: -", sysmon.network_status_line(state, "today"))
 
     def test_unlimited_quota_is_hidden_with_future_start_date(self):
@@ -361,7 +361,7 @@ class TrafficTests(unittest.TestCase):
         }
         line = sysmon.network_status_line(state, "30d", today=today)
         self.assertLessEqual(len(line), sysmon.BOX_WIDTH - 6)
-        self.assertIn("Quota: 0.13 | 2.00 Tb", line)
+        self.assertIn("Quota: 0.13 | 2 Tb", line)
 
 
 class FormattingAndPeriodTests(unittest.TestCase):
@@ -463,14 +463,30 @@ class FormattingAndPeriodTests(unittest.TestCase):
             "1.00 | 0.00 Tb",
         )
 
-    def test_quota_input_defaults_to_gb_and_accepts_gb_or_tb_suffix(self):
-        expected = 8_000_000_000_000
-        self.assertEqual(sysmon.parse_quota_size("8000"), expected)
-        self.assertEqual(sysmon.parse_quota_size("8000 Gb"), expected)
-        self.assertEqual(sysmon.parse_quota_size("8Tb"), expected)
-        self.assertEqual(sysmon.parse_quota_size("8 Tb"), expected)
+    def test_quota_input_defaults_to_tb_and_accepts_decimal_values(self):
+        self.assertEqual(sysmon.parse_quota_size("0.5"), 500_000_000_000)
+        self.assertEqual(sysmon.parse_quota_size("4.5"), 4_500_000_000_000)
+        self.assertEqual(sysmon.parse_quota_size("8"), 8_000_000_000_000)
+        self.assertEqual(sysmon.parse_quota_size("8Tb"), 8_000_000_000_000)
+        self.assertEqual(sysmon.parse_quota_size("0.5 Tb"), 500_000_000_000)
+        with self.assertRaises(ValueError):
+            sysmon.parse_quota_size("8000Gb")
         with self.assertRaises(ValueError):
             sysmon.parse_quota_size("invalid")
+
+    def test_quota_limit_is_shown_without_trailing_decimal_zeros(self):
+        self.assertEqual(
+            sysmon.format_quota_pair(0, 8_000_000_000_000),
+            "0.00 | 8 Tb",
+        )
+        self.assertEqual(
+            sysmon.format_quota_pair(0, 4_500_000_000_000),
+            "0.00 | 4.5 Tb",
+        )
+        self.assertEqual(
+            sysmon.format_quota_pair(0, 500_000_000_000),
+            "0.00 | 0.5 Tb",
+        )
 
     def test_format_bytes_uses_requested_mb_gb_tb_casing(self):
         self.assertEqual(sysmon.format_bytes(1_000_000), "1.0 Mb")
