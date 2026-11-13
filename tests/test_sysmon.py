@@ -166,7 +166,7 @@ class TrafficTests(unittest.TestCase):
         self.assertEqual(saved["selected_period"], "month_history")
         self.assertEqual(saved["selected_month"], selected.isoformat())
 
-    def test_main_cli_restores_saved_month_history_selection(self):
+    def test_main_cli_requires_m_to_reopen_saved_month_history(self):
         self.collect_with(1000)
         selected = datetime.date.today().replace(day=1)
         sysmon.update_settings(
@@ -185,8 +185,12 @@ class TrafficTests(unittest.TestCase):
              mock.patch.object(sysmon.curses, "wrapper", side_effect=fake_wrapper):
             self.assertEqual(sysmon.main_cli(), 0)
 
-        self.assertEqual(captured["period"], "month_history")
+        self.assertEqual(captured["period"], "today")
         self.assertEqual(captured["selected_month"], selected)
+        self.assertEqual(
+            self.read_state()["settings"]["selected_period"],
+            "today",
+        )
 
     def test_unlimited_is_default_quota(self):
         self.collect_with(1000)
