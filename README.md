@@ -41,9 +41,9 @@ sysmon
 
 В блоке **Network** одной строкой отображаются период, исходящий трафик и квота. Клавиши:
 
-- `P` — переключить период (Today / 7 Days / 30 Days / All Time).
+- `P` — переключить период (Today / 7 days / 30 days / All time).
 - `D` — изменить дату начала отображения трафика и расчёта квоты.
-- `L` — изменить квоту в GB или выбрать `Unlimited`.
+- `L` — изменить квоту в Gb или выбрать `Unlimited`.
 - `Q` — выйти.
 
 Блок **Hotkeys** постоянно показывает эти сочетания клавиш.
@@ -61,23 +61,23 @@ sysmon --from-date 2026-11-01 --to-date 2026-11-13
 On the first launch, Sysmon asks for:
 
 - Traffic start date in `DD.MM.YYYY` format (day/month/year); default: the current date. Blank or invalid input uses today's date.
-- Traffic quota in decimal GB; default: `Unlimited`. Blank or invalid input sets `Unlimited`.
+- Traffic quota in decimal Gb; default: `Unlimited`. Blank or invalid input sets `Unlimited`.
 
 The start date cannot be earlier than the installation date. A future start date is allowed: Traffic and a configured Quota usage display `-` until that date. The same start date is used to filter both the selected Traffic period and accumulated Quota usage. Invalid-input messages remain visible for five seconds.
 
 Hotkeys:
 
 - `D` — change the shared Traffic/Quota start date.
-- `L` — change the quota in GB or set it to `Unlimited`.
+- `L` — change the quota in Gb or set it to `Unlimited`.
 
 The start date applies to both Traffic and Quota; they cannot be configured independently. Blank date input sets today's date. Blank quota input sets `Unlimited`. Invalid date input falls back to today's date, and invalid quota input falls back to `Unlimited`. Error messages remain visible for five seconds.
 
-Traffic, Memory, Disk, and Quota values use the `GB` suffix. Traffic and quota values are displayed in decimal GB with one fractional digit (for example, `0.1GB`). When the quota is `Unlimited`, the Quota field is hidden entirely while traffic collection continues. The Network row keeps values up to 100,000 GB (100 TB) within the existing box width.
+Traffic, Memory, Disk, and Quota values use the requested `Gb`, `Mb`, and `Tb` labels, with a space before each unit. These labels are visual abbreviations only: Sysmon continues to count bytes, not bits. Values below 1,024 Gb are shown with one decimal place; at 1,024 Gb and above they are converted to Tb using 1,024 as the display divisor and shown with two decimal places. Memory and Disk retain binary byte conversion; Traffic and Quota retain decimal byte conversion. Used/total pairs display one shared unit at the end and use `|` as the separator. Disk I/O retains `Mb/s`, while the read/write separator is `|`. When the quota is `Unlimited`, the Quota field is hidden entirely while traffic collection continues. A 100,000 Gb preview is shown as 97.66 Tb and fits both Today and 30 days in the existing Network row.
 
 Optional administrative commands:
 
 ```sh
-sysmon --set-limit 2000GB
+sysmon --set-limit 2000Gb
 sysmon --quota-start-date 13.11.2026
 sysmon --clear-limit
 ```
@@ -89,10 +89,10 @@ Settings are stored in `traffic.json`. Run configuration commands as `root` or t
 To inspect how large Traffic and Quota values fit into the existing Network panel, run:
 
 ```sh
-sysmon --preview-network 100000GB
+sysmon --preview-network 100000Gb
 ```
 
-This opens the normal curses interface with synthetic Network values. The supplied size is shown as Traffic and as both used/limit Quota values. Press `P` to cycle through periods and `Q` to exit. Preview mode skips first-run setup and disables date/quota editing. It does not read or modify the saved traffic history, quota settings, or collector baseline. Any supported size can be supplied, for example `500GB`, `2TB`, or `100000GB`.
+This opens the normal curses interface with synthetic Network values. The supplied size is shown as Traffic and as both used/limit Quota values. Press `P` to cycle through periods and `Q` to exit. Preview mode skips first-run setup and disables date/quota editing. It does not read or modify the saved traffic history, quota settings, or collector baseline. Any supported size can be supplied, for example `500Gb`, `2Tb`, or `100000Gb`.
 
 ## Reset first-run setup
 
