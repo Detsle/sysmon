@@ -1071,7 +1071,6 @@ def main_cli():
             args.collect,
             args.set_limit is not None,
             args.clear_limit,
-            args.quota_start_date is not None,
             args.interface is not None,
             args.from_date is not None,
             args.to_date is not None,
@@ -1113,17 +1112,26 @@ def main_cli():
         except KeyboardInterrupt:
             print("\\nSetup cancelled. Run sysmon again to complete first-run setup.")
             return 0
+        state = load_state()
         if args.period is None:
-            state = load_state()
             args.period = (
                 state.get("settings", {}).get("selected_period", "today")
                 if state else "today"
             )
         elif args.period in DEFAULT_PERIODS:
             update_settings(selected_period=args.period)
+        args.selected_month = (
+            datetime.date.fromisoformat(
+                state.get("settings", {}).get(
+                    "selected_month", datetime.date.today().replace(day=1).isoformat()
+                )
+            )
+            if state else datetime.date.today().replace(day=1)
+        )
     else:
         args.preview_network = preview_network_bytes
         args.period = args.period or "today"
+        args.selected_month = datetime.date.today().replace(day=1)
 
     try:
         curses.wrapper(main, args)
