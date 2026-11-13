@@ -39,10 +39,11 @@ git clone --branch development --single-branch https://github.com/Detsle/sysmon.
 sysmon
 ```
 
-В блоке **Network** отображаются выбранный период, общий исходящий трафик и квота. Клавиши:
+В блоке **Network** одной строкой отображаются период, исходящий трафик и квота. Клавиши:
 
 - `P` — переключить период (Today / 7 Days / 30 Days / All Time).
-- `D` — изменить дату начала расчёта квоты.
+- `D` — изменить дату начала отображения трафика и расчёта квоты.
+- `L` — изменить квоту в GB или выбрать `Unlimited`.
 - `Q` — выйти.
 
 Блок **Hotkeys** постоянно показывает эти сочетания клавиш.
@@ -55,16 +56,23 @@ sysmon --from-date 2026-11-01 --to-date 2026-11-13
 
 Даты включаются в расчёт целиком.
 
-## Quota settings
+## Traffic start date and quota
 
 On the first launch, Sysmon asks for:
 
-- Quota start date in `DD.MM.YYYY` format (default: the current date).
-- Traffic quota in GB (default: `Unlimited`; press Enter to keep unlimited quota).
+- Traffic start date in `DD.MM.YYYY` format (day/month/year); default: the current date.
+- Traffic quota in decimal GB; default: `Unlimited`.
 
-The `D` hotkey changes the quota start date later. The quota usage is calculated from that date through the current date. When the quota is Unlimited, the Network block continuously displays `Quota: Unlimited`, while traffic collection continues normally.
+The start date cannot be earlier than the installation date. A future start date is allowed: Traffic and a configured Quota usage display `-` until that date. The same start date is used to filter both the selected Traffic period and accumulated Quota usage.
 
-The optional administrative commands are also available:
+Hotkeys:
+
+- `D` — change the Traffic start date.
+- `L` — change the quota in GB or set it to `Unlimited`.
+
+Traffic and quota values are displayed in decimal GB with one fractional digit, matching the Memory/Disk value style (for example, `0.1G`). When the quota is unlimited, `Quota: Unlimited` remains visible while traffic collection continues.
+
+Optional administrative commands:
 
 ```sh
 sysmon --set-limit 2000GB
@@ -72,7 +80,7 @@ sysmon --quota-start-date 13.11.2026
 sysmon --clear-limit
 ```
 
-Quota values entered in GB use decimal units (1 GB = 1,000,000,000 bytes). Settings are stored in `traffic.json`. Run configuration commands as `root` or through `sudo`/`doas`; regular users only need read access to the statistics.
+Settings are stored in `traffic.json`. Run configuration commands as `root` or through `sudo`/`doas`; regular users only need read access to the statistics.
 
 ## Сетевой интерфейс
 
