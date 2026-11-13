@@ -229,7 +229,8 @@ def load_state():
     try:
         created_at = int(state.get("created_at", time.time()))
         accounting_started_at = state.get("accounting_started_at")
-        if accounting_started_at is None:
+        legacy_collector_state = accounting_started_at is None
+        if legacy_collector_state:
             # Legacy builds before 2026-11-13 had no traffic collector.
             accounting_started_at = max(created_at, TRAFFIC_COLLECTOR_INTRODUCED_AT)
         else:
@@ -238,6 +239,11 @@ def load_state():
         raise SysmonError("traffic.json contains invalid collection timestamps")
     state["created_at"] = created_at
     state["accounting_started_at"] = accounting_started_at
+    if legacy_collector_state:
+        # Do not calculate a delta from an unknown pre-collector counter baseline.
+        state["last_counter"] = None
+        state["last_sample"] = None
+        state["boot_marker"] = boot_marker()
     state["settings"].setdefault("interface", "auto")
     state["settings"].setdefault("limit_bytes", None)
     # Remove the legacy manually configured quota date; quota periods are calendar months.
@@ -435,7 +441,11 @@ def update_settings(
         if selected_month is not None:
             if not isinstance(selected_month, datetime.date):
                 raise SysmonError("Invalid selected month")
-            settings["selected_month"] = selected_month.replace(day=1).isoformat()
+            selected_month = selected_month.replace(day=1)
+            earliest_month = data_start_date(state).replace(day=1)
+            latest_month = datetime.date.today().replace(day=1)
+            selected_month = min(max(selected_month, earliest_month), latest_month)
+            settings["selected_month"] = selected_month.isoformat()
         if setup_complete is not None:
             settings["setup_complete"] = bool(setup_complete)
         atomic_save(state)
@@ -725,8 +735,14 @@ def prompt_first_run_setup():
     print("")
     print("Sysmon first-run setup")
     print("----------------------")
-    print("Traffic collection is active since installation.")
+    if int(state.get("accounting_started_at", state.get("created_at", 0))) > int(state.get("created_at", 0)):
+        start_text = data_start_date(state).strftime("%d %b %Y")
+        print("Traffic collection is active since {}.".format(start_text))
+        print("Records from earlier builds are excluded because they did not collect traffic.")
+    else:
+        print("Traffic collection is active since installation.")
     print("Traffic and quota usage are grouped by calendar month.")
+    print("The first accounting month may be partial.")
     print("")
 
     raw_quota = input(
