@@ -233,8 +233,10 @@ def load_state():
         raise SysmonError("traffic.json contains invalid quota settings")
     if limit is not None and limit <= 0:
         raise SysmonError("traffic.json contains invalid quota settings")
-    if quota_start > datetime.date.today():
-        raise SysmonError("traffic.json contains a quota start date in the future")
+    installed_at = datetime.date.fromtimestamp(int(state.get("created_at", time.time())))
+    if quota_start < installed_at:
+        state["settings"]["quota_start_date"] = installed_at.isoformat()
+        state.setdefault("notes", []).append({"time": int(time.time()), "event": "quota_start_clamped"})
     state["settings"]["limit_bytes"] = limit
     state["settings"]["setup_complete"] = bool(state["settings"]["setup_complete"])
     return state
@@ -383,6 +385,13 @@ def update_settings(
         if clear_limit:
             settings["limit_bytes"] = None
         if quota_start_date is not None:
+            installed_at = datetime.date.fromtimestamp(int(state.get("created_at", time.time())))
+            if quota_start_date < installed_at:
+                raise SysmonError(
+                    "Traffic start date cannot be earlier than installation ({})".format(
+                        installed_at.strftime("%d.%m.%Y")
+                    )
+                )
             settings["quota_start_date"] = quota_start_date.isoformat()
         if setup_complete is not None:
             settings["setup_complete"] = bool(setup_complete)
@@ -434,22 +443,60 @@ def format_bytes(value):
     return "0 B"
 
 
+def format_gigabytes(value):
+    """Format decimal GB with one fractional digit, matching Memory and Disk."""
+    return "{:.1f}G".format(max(0, int(value)) / float(1000 ** 3))
+
+
+def tracking_start_date(state):
+    settings = state.get("settings", {})
+    installed_at = datetime.date.fromtimestamp(int(state.get("created_at", time.time())))
+    configured = settings.get("quota_start_date")
+    try:
+        selected = datetime.date.fromisoformat(configured) if configured else installed_at
+    except (TypeError, ValueError):
+        selected = installed_at
+    return max(installed_at, selected)
+
+
+def traffic_for_period(state, period, today=None, custom_from=None, custom_to=None):
+    """Return TX bytes in the selected period, clipped to the configured start date."""
+    today = today or datetime.date.today()
+    start, end = period_bounds(period, today=today, custom_from=custom_from, custom_to=custom_to)
+    end = min(end, today)
+    tracking_start = tracking_start_date(state)
+    if end < tracking_start:
+        return None
+    start = max(start, tracking_start)
+    if start > end:
+        return None
+    return sum_range(state.get("daily", {}), start, end)
+
+
 def quota_text(state, today=None):
     settings = state.get("settings", {})
     limit = settings.get("limit_bytes")
     if limit is None:
         return "Quota: Unlimited"
     today = today or datetime.date.today()
-    start_text = settings.get("quota_start_date")
-    try:
-        start = datetime.date.fromisoformat(start_text) if start_text else today
-    except ValueError:
-        start = today
-    used = sum_range(state.get("daily", {}), start, today) if start <= today else 0
-    used_gb = used / float(1000 ** 3)
-    limit_gb = int(limit) / float(1000 ** 3)
-    percent = (used / float(limit)) * 100.0 if limit else 0.0
-    return "Quota: {:.2f} / {:.2f} GB ({:.1f}%)".format(used_gb, limit_gb, percent)
+    start = tracking_start_date(state)
+    if today < start:
+        return "Quota: - / {}".format(format_gigabytes(limit))
+    used = sum_range(state.get("daily", {}), start, today)
+    return "Quota: {} / {}".format(format_gigabytes(used), format_gigabytes(limit))
+
+
+def network_status_line(state, period, today=None, custom_from=None, custom_to=None):
+    today = today or datetime.date.today()
+    traffic = traffic_for_period(
+        state, period, today=today, custom_from=custom_from, custom_to=custom_to
+    )
+    traffic_value = "-" if traffic is None else format_gigabytes(traffic)
+    return "Period: {}  Traffic: {}  {}".format(
+        selected_period_text(period, custom_from, custom_to),
+        traffic_value,
+        quota_text(state, today=today),
+    )
 
 
 def prompt_first_run_setup():
@@ -475,17 +522,21 @@ def prompt_first_run_setup():
     print("")
 
     while True:
-        raw_date = input("Quota start date (DD.MM.YYYY, day/month/year) [{}]: ".format(today.strftime("%d.%m.%Y"))).strip()
+        raw_date = input("Traffic start date (DD.MM.YYYY, day/month/year) [{}]: ".format(today.strftime("%d.%m.%Y"))).strip()
         try:
             start_date = parse_display_date(raw_date) if raw_date else today
-            if start_date > today:
-                raise ValueError("Date cannot be in the future")
+            if start_date < installed_at:
+                raise ValueError(
+                    "Date cannot be earlier than installation ({})".format(
+                        installed_at.strftime("%d.%m.%Y")
+                    )
+                )
             break
         except ValueError as exc:
             print("Invalid date: {}.".format(exc))
 
-    if start_date < installed_at:
-        print("Note: traffic before {} cannot be restored.".format(installed_at.strftime("%d.%m.%Y")))
+    if start_date > today:
+        print("Traffic totals will remain unavailable until the selected date.")
 
     while True:
         raw_quota = input("Traffic quota in GB [Unlimited]: ").strip()
@@ -511,23 +562,15 @@ def prompt_first_run_setup():
     print("")
 
 
-def edit_quota_start_date(stdscr):
-    """Prompt for a new quota calculation start date from the curses UI."""
-    state, error = read_state_for_ui()
-    if error or state is None:
-        return "Traffic data unavailable"
-    current = state.get("settings", {}).get("quota_start_date") or datetime.date.today().isoformat()
-    try:
-        current_date = datetime.date.fromisoformat(current)
-    except ValueError:
-        current_date = datetime.date.today()
-
+def read_hotkey_input(stdscr, prompt, max_chars):
+    """Read a short value on the Hotkeys row without changing the layout."""
     _, width = stdscr.getmaxyx()
-    row = 19
+    row = 18
     start_x = (width - BOX_WIDTH) // 2 + 3
-    prompt = "Quota start date (DD.MM.YYYY) [{}]: ".format(current_date.strftime("%d.%m.%Y"))
-    safe_addstr(stdscr, row, start_x, " " * (BOX_WIDTH - 6), BOX_WIDTH - 6)
-    safe_addstr(stdscr, row, start_x, prompt, BOX_WIDTH - 6)
+    content_width = BOX_WIDTH - 6
+    safe_addstr(stdscr, row, start_x, " " * content_width, content_width)
+    safe_addstr(stdscr, row, start_x, prompt, content_width)
+    field_x = start_x + len(prompt)
     stdscr.timeout(-1)
     stdscr.refresh()
     try:
@@ -536,7 +579,7 @@ def edit_quota_start_date(stdscr):
         pass
     curses.echo()
     try:
-        raw = stdscr.getstr(row, start_x + len(prompt), 10).decode("utf-8", "replace").strip()
+        value = stdscr.getstr(row, field_x, max_chars).decode("utf-8", "replace").strip()
     finally:
         curses.noecho()
         stdscr.timeout(1000)
@@ -544,21 +587,60 @@ def edit_quota_start_date(stdscr):
             curses.curs_set(0)
         except curses.error:
             pass
+    return value
+
+
+def edit_quota_start_date(stdscr):
+    """Change the first date included in both Traffic and Quota totals."""
+    state, error = read_state_for_ui()
+    if error or state is None:
+        return "Traffic data unavailable"
+    current_date = tracking_start_date(state)
+    prompt = "Start date DD.MM.YYYY [{}]: ".format(current_date.strftime("%d.%m.%Y"))
+    raw = read_hotkey_input(stdscr, prompt, 10)
     if not raw:
-        return "Quota start date unchanged"
+        return "Start date unchanged"
     try:
         selected = parse_display_date(raw)
-        if selected > datetime.date.today():
-            raise ValueError("Date cannot be in the future")
         installed_at = datetime.date.fromtimestamp(int(state.get("created_at", time.time())))
-        update_settings(quota_start_date=selected, setup_complete=True)
         if selected < installed_at:
-            return "Updated; traffic before installation is unavailable"
-        return "Quota start date updated"
+            return "Date cannot be earlier than installation ({})".format(installed_at.strftime("%d.%m.%Y"))
+        update_settings(quota_start_date=selected, setup_complete=True)
+        if selected > datetime.date.today():
+            return "Start date updated; traffic starts on {}".format(selected.strftime("%d.%m.%Y"))
+        return "Start date updated"
     except ValueError as exc:
         return "Invalid date: {}".format(exc)
-    except OSError:
-        return "Cannot save settings; run sysmon with write access"
+    except (OSError, SysmonError) as exc:
+        return "Cannot save start date: {}".format(exc)
+
+
+def edit_traffic_quota(stdscr):
+    """Change the outbound quota in decimal GB, or set it to Unlimited."""
+    state, error = read_state_for_ui()
+    if error or state is None:
+        return "Traffic data unavailable"
+    current_limit = state.get("settings", {}).get("limit_bytes")
+    current = "Unlimited" if current_limit is None else "{:.1f}".format(int(current_limit) / float(1000 ** 3))
+    prompt = "Quota GB [{}] (or Unlimited): ".format(current)
+    raw = read_hotkey_input(stdscr, prompt, 16)
+    if not raw:
+        return "Quota unchanged"
+    if raw.lower() in ("unlimited", "none", "off"):
+        limit_bytes = None
+    else:
+        try:
+            quota_gb = float(raw)
+            if not math.isfinite(quota_gb) or quota_gb <= 0:
+                raise ValueError
+            limit_bytes = int(quota_gb * (1000 ** 3))
+        except ValueError:
+            return "Enter a positive GB value or Unlimited"
+    try:
+        update_settings(limit_bytes=limit_bytes, set_limit=True, setup_complete=True)
+        return "Quota set to Unlimited" if limit_bytes is None else "Quota updated"
+    except (OSError, SysmonError) as exc:
+        return "Cannot save quota: {}".format(exc)
 
 
 def read_state_for_ui():
@@ -603,8 +685,8 @@ def main(stdscr, args):
     while True:
         height, width = stdscr.getmaxyx()
         stdscr.erase()
-        if width < BOX_WIDTH + 2 or height < 21:
-            safe_addstr(stdscr, 0, 0, "Terminal too small: need at least 72x21", max(1, width - 1))
+        if width < BOX_WIDTH + 2 or height < 20:
+            safe_addstr(stdscr, 0, 0, "Terminal too small: need at least 72x20", max(1, width - 1))
             stdscr.refresh()
             stdscr.getch()
             continue
@@ -661,33 +743,26 @@ def main(stdscr, args):
             BOX_WIDTH - 6,
         )
 
-        draw_box(stdscr, " Network ", 14, 4, BOX_WIDTH, x)
+        draw_box(stdscr, " Network ", 14, 3, BOX_WIDTH, x)
         state, state_error = read_state_for_ui()
         if state_error:
-            first_line = "Traffic data unavailable"
-            second_line = state_error
+            network_line = "Traffic data unavailable"
         elif state is None:
-            first_line = "Traffic collector is not initialized"
-            second_line = "Run the installer to initialize traffic collection"
+            network_line = "Traffic collector is not initialized"
         else:
             try:
-                start_date, end_date = period_bounds(current_period, custom_from=custom_from, custom_to=custom_to)
-                outgoing = sum_range(state.get("daily", {}), start_date, end_date)
-                first_line = "Period: {}   Traffic: {}".format(
-                    selected_period_text(current_period, custom_from, custom_to), format_bytes(outgoing)
+                network_line = network_status_line(
+                    state, current_period, custom_from=custom_from, custom_to=custom_to
                 )
-                second_line = quota_text(state)
                 last_sample = state.get("last_sample")
                 if last_sample and time.time() - int(last_sample) > 180:
-                    second_line += "  [STALE]"
+                    network_line += "  [STALE]"
             except (SysmonError, ValueError, TypeError) as exc:
-                first_line = "Traffic data unavailable"
-                second_line = str(exc)
-        safe_addstr(stdscr, 15, x + 3, first_line, BOX_WIDTH - 6)
-        safe_addstr(stdscr, 16, x + 3, second_line, BOX_WIDTH - 6)
+                network_line = "Traffic data unavailable: {}".format(exc)
+        safe_addstr(stdscr, 15, x + 3, network_line, BOX_WIDTH - 6)
 
-        draw_box(stdscr, " Hotkeys ", 18, 3, BOX_WIDTH, x)
-        safe_addstr(stdscr, 19, x + 3, "P: period   D: quota start date   Q: quit", BOX_WIDTH - 6)
+        draw_box(stdscr, " Hotkeys ", 17, 3, BOX_WIDTH, x)
+        safe_addstr(stdscr, 18, x + 3, "P: period   D: start date   L: quota   Q: quit", BOX_WIDTH - 6)
 
         stdscr.noutrefresh()
         curses.doupdate()
@@ -700,7 +775,12 @@ def main(stdscr, args):
             current_period = periods[period_index]
         elif key in (ord("d"), ord("D")):
             status = edit_quota_start_date(stdscr)
-            safe_addstr(stdscr, 19, x + 3, status, BOX_WIDTH - 6)
+            safe_addstr(stdscr, 18, x + 3, status, BOX_WIDTH - 6)
+            stdscr.refresh()
+            time.sleep(1)
+        elif key in (ord("l"), ord("L")):
+            status = edit_traffic_quota(stdscr)
+            safe_addstr(stdscr, 18, x + 3, status, BOX_WIDTH - 6)
             stdscr.refresh()
             time.sleep(1)
 
@@ -756,8 +836,17 @@ def main_cli():
         if args.quota_start_date:
             try:
                 quota_start_date = parse_display_date(args.quota_start_date)
-                if quota_start_date > datetime.date.today():
-                    raise ValueError("Date cannot be in the future")
+                state = load_state()
+                installed_at = (
+                    datetime.date.fromtimestamp(int(state.get("created_at", time.time())))
+                    if state else datetime.date.today()
+                )
+                if quota_start_date < installed_at:
+                    raise ValueError(
+                        "Date cannot be earlier than installation ({})".format(
+                            installed_at.strftime("%d.%m.%Y")
+                        )
+                    )
             except ValueError as exc:
                 parser.error("invalid --quota-start-date: {}".format(exc))
         update_settings(
