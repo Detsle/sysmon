@@ -9,6 +9,7 @@ except ImportError:
 import datetime
 import fcntl
 import json
+import math
 import os
 import re
 import shutil
@@ -491,7 +492,7 @@ def prompt_first_run_setup():
             break
         try:
             quota_gb = float(raw_quota)
-            if quota_gb <= 0:
+            if not math.isfinite(quota_gb) or quota_gb <= 0:
                 raise ValueError
             limit_bytes = int(quota_gb * (1000 ** 3))
             break
@@ -527,12 +528,20 @@ def edit_quota_start_date(stdscr):
     safe_addstr(stdscr, row, 0, prompt, max(1, len(prompt)))
     stdscr.timeout(-1)
     stdscr.refresh()
+    try:
+        curses.curs_set(1)
+    except curses.error:
+        pass
     curses.echo()
     try:
         raw = stdscr.getstr(row, len(prompt), 10).decode("utf-8", "replace").strip()
     finally:
         curses.noecho()
         stdscr.timeout(1000)
+        try:
+            curses.curs_set(0)
+        except curses.error:
+            pass
     if not raw:
         return "Quota start date unchanged"
     try:
