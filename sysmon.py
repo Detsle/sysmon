@@ -26,6 +26,7 @@ import psutil
 VERSION = "0.2.0-dev"
 BOX_WIDTH = 70
 DEFAULT_PERIODS = ("today", "7d", "30d", "month", "last_month", "all")
+SAVED_PERIODS = DEFAULT_PERIODS + ("month_history",)
 PERIOD_LABELS = {
     "today": "Today",
     "7d": "7 days",
@@ -33,6 +34,7 @@ PERIOD_LABELS = {
     "month": "Month",
     "last_month": "Last month",
     "all": "All time",
+    "month_history": "Monthly history",
 }
 DATA_DIR = Path(os.environ.get("SYSMON_DATA_DIR", "/var/lib/sysmon"))
 DATA_FILE = Path(os.environ.get("SYSMON_DATA_FILE", str(DATA_DIR / "traffic.json")))
@@ -199,8 +201,8 @@ def empty_state():
         "settings": {
             "interface": "auto",
             "limit_bytes": None,
-            "quota_start_date": datetime.date.today().isoformat(),
             "selected_period": "today",
+            "selected_month": datetime.date.today().replace(day=1).isoformat(),
             "setup_complete": False,
         },
         "notes": [],
@@ -222,28 +224,26 @@ def load_state():
     state.setdefault("notes", [])
     state["settings"].setdefault("interface", "auto")
     state["settings"].setdefault("limit_bytes", None)
-    state["settings"].setdefault(
-        "quota_start_date",
-        datetime.date.fromtimestamp(int(state.get("created_at", time.time()))).isoformat(),
-    )
+    # Remove the legacy manually configured quota date; quota periods are calendar months.
+    state["settings"].pop("quota_start_date", None)
     state["settings"].setdefault("selected_period", "today")
+    state["settings"].setdefault(
+        "selected_month", datetime.date.today().replace(day=1).isoformat()
+    )
     state["settings"].setdefault("setup_complete", False)
     if not isinstance(state["settings"].get("interface"), str):
         raise SysmonError("traffic.json contains an invalid interface setting")
-    if state["settings"].get("selected_period") not in DEFAULT_PERIODS:
+    if state["settings"].get("selected_period") not in SAVED_PERIODS:
         raise SysmonError("traffic.json contains an invalid selected period")
     try:
         limit = state["settings"].get("limit_bytes")
         limit = int(limit) if limit is not None else None
-        quota_start = datetime.date.fromisoformat(state["settings"]["quota_start_date"])
+        selected_month = datetime.date.fromisoformat(state["settings"]["selected_month"])
     except (TypeError, ValueError):
-        raise SysmonError("traffic.json contains invalid quota settings")
+        raise SysmonError("traffic.json contains invalid settings")
+    state["settings"]["selected_month"] = selected_month.replace(day=1).isoformat()
     if limit is not None and limit <= 0:
         raise SysmonError("traffic.json contains invalid quota settings")
-    installed_at = datetime.date.fromtimestamp(int(state.get("created_at", time.time())))
-    if quota_start < installed_at:
-        state["settings"]["quota_start_date"] = installed_at.isoformat()
-        state.setdefault("notes", []).append({"time": int(time.time()), "event": "quota_start_clamped"})
     state["settings"]["limit_bytes"] = limit
     state["settings"]["setup_complete"] = bool(state["settings"]["setup_complete"])
     return state
@@ -391,8 +391,8 @@ def update_settings(
     limit_bytes=None,
     set_limit=False,
     clear_limit=False,
-    quota_start_date=None,
     selected_period=None,
+    selected_month=None,
     setup_complete=None,
 ):
     with StateLock():
@@ -406,19 +406,14 @@ def update_settings(
             settings["limit_bytes"] = limit_bytes
         if clear_limit:
             settings["limit_bytes"] = None
-        if quota_start_date is not None:
-            installed_at = datetime.date.fromtimestamp(int(state.get("created_at", time.time())))
-            if quota_start_date < installed_at:
-                raise SysmonError(
-                    "Quota start date cannot be earlier than installation ({})".format(
-                        installed_at.strftime("%d-%m-%y")
-                    )
-                )
-            settings["quota_start_date"] = quota_start_date.isoformat()
         if selected_period is not None:
-            if selected_period not in DEFAULT_PERIODS:
+            if selected_period not in SAVED_PERIODS:
                 raise SysmonError("Invalid selected period")
             settings["selected_period"] = selected_period
+        if selected_month is not None:
+            if not isinstance(selected_month, datetime.date):
+                raise SysmonError("Invalid selected month")
+            settings["selected_month"] = selected_month.replace(day=1).isoformat()
         if setup_complete is not None:
             settings["setup_complete"] = bool(setup_complete)
         atomic_save(state)
@@ -431,8 +426,10 @@ def reset_first_run_setup():
         if state is None:
             state = empty_state()
         settings = state["settings"]
-        settings["quota_start_date"] = datetime.date.today().isoformat()
+        settings.pop("quota_start_date", None)
         settings["limit_bytes"] = None
+        settings["selected_period"] = "today"
+        settings["selected_month"] = datetime.date.today().replace(day=1).isoformat()
         settings["setup_complete"] = False
         atomic_save(state)
 
