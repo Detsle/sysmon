@@ -166,7 +166,7 @@ class TrafficTests(unittest.TestCase):
         }
         self.assertEqual(
             sysmon.quota_text(state, today=today),
-            "Quota: 1.0GB/2.0GB",
+            "Quota: 1.0GB / 2.0GB",
         )
 
     def test_first_run_setup_defaults_to_today_and_unlimited(self):
@@ -273,7 +273,7 @@ class TrafficTests(unittest.TestCase):
         )
         state = self.read_state()
         self.assertIsNone(sysmon.traffic_for_period(state, "today"))
-        self.assertEqual(sysmon.quota_text(state), "Quota: -/2.0GB")
+        self.assertEqual(sysmon.quota_text(state), "Quota: - / 2.0GB")
         self.assertIn("Traffic: -", sysmon.network_status_line(state, "today"))
 
     def test_unlimited_quota_is_hidden_with_future_start_date(self):
@@ -332,7 +332,7 @@ class FormattingAndPeriodTests(unittest.TestCase):
         self.assertLessEqual(len(line), sysmon.BOX_WIDTH - 6)
         self.assertIn("Period: 30d", line)
         self.assertIn("Traffic: 100000.0GB", line)
-        self.assertIn("Quota: 100000.0GB/100000.0GB", line)
+        self.assertIn("Quota: 100000.0GB / 100000.0GB", line)
 
     def test_memory_and_disk_labels_use_gb_not_g(self):
         source = Path(sysmon.__file__).read_text(encoding="utf-8")
@@ -380,7 +380,7 @@ class FormattingAndPeriodTests(unittest.TestCase):
         }
         line = sysmon.network_status_line(state, "30d", today=today)
         self.assertLessEqual(len(line), sysmon.BOX_WIDTH - 6)
-        self.assertIn("Quota: 125.0GB/2000.0GB", line)
+        self.assertIn("Quota: 125.0GB / 2000.0GB", line)
 
 
 if __name__ == "__main__":
