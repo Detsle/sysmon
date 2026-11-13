@@ -563,22 +563,15 @@ def data_start_date(state):
     return datetime.date.fromtimestamp(int(state.get("created_at", time.time())))
 
 
-def tracking_start_date(state):
-    """Return the configured quota start, never earlier than data collection."""
-    settings = state.get("settings", {})
-    installed_at = data_start_date(state)
-    configured = settings.get("quota_start_date")
-    try:
-        selected = datetime.date.fromisoformat(configured) if configured else installed_at
-    except (TypeError, ValueError):
-        selected = installed_at
-    return max(installed_at, selected)
-
-
-def traffic_for_period(state, period, today=None, custom_from=None, custom_to=None):
+def traffic_for_period(
+    state, period, today=None, custom_from=None, custom_to=None, selected_month=None
+):
     """Return TX bytes in the selected period, clipped to actual collection start."""
     today = today or datetime.date.today()
-    start, end = period_bounds(period, today=today, custom_from=custom_from, custom_to=custom_to)
+    start, end = period_bounds(
+        period, today=today, custom_from=custom_from, custom_to=custom_to,
+        selected_month=selected_month,
+    )
     end = min(end, today)
     collection_start = data_start_date(state)
     if end < collection_start:
@@ -589,31 +582,37 @@ def traffic_for_period(state, period, today=None, custom_from=None, custom_to=No
     return sum_range(state.get("daily", {}), start, end)
 
 
-def quota_text(state, today=None):
-    """Return quota usage, or None when the quota is Unlimited."""
-    settings = state.get("settings", {})
-    limit = settings.get("limit_bytes")
+def quota_text(state, today=None, month_start=None):
+    """Return usage for a calendar month, or None when the quota is Unlimited."""
+    limit = state.get("settings", {}).get("limit_bytes")
     if limit is None:
         return None
     today = today or datetime.date.today()
-    start = tracking_start_date(state)
-    if today < start:
+    start, end = calendar_month_bounds(month_start or today, today=today)
+    collection_start = data_start_date(state)
+    if end < collection_start:
         values = format_quota_pair(None, limit)
     else:
-        used = sum_range(state.get("daily", {}), start, today)
+        start = max(start, collection_start)
+        used = sum_range(state.get("daily", {}), start, end)
         values = format_quota_pair(used, limit)
     return "Quota: {}".format(values)
 
 
-def network_status_line(state, period, today=None, custom_from=None, custom_to=None):
+def network_status_line(
+    state, period, today=None, custom_from=None, custom_to=None, selected_month=None
+):
     today = today or datetime.date.today()
     traffic = traffic_for_period(
-        state, period, today=today, custom_from=custom_from, custom_to=custom_to
+        state, period, today=today, custom_from=custom_from, custom_to=custom_to,
+        selected_month=selected_month,
     )
     traffic_value = "-" if traffic is None else format_gigabytes(traffic)
-    period_label = selected_period_text(period, custom_from, custom_to)
-    if period in ("month", "last_month"):
-        period_start, period_end = period_bounds(period, today=today)
+    period_label = selected_period_text(
+        period, custom_from, custom_to, today=today, selected_month=selected_month
+    )
+    if period in ("month", "last_month", "month_history"):
+        period_start, _ = period_bounds(period, today=today, selected_month=selected_month)
         if data_start_date(state) > period_start:
             period_label += "*"
     if period == "custom":
@@ -622,7 +621,12 @@ def network_status_line(state, period, today=None, custom_from=None, custom_to=N
         "Period: {}".format(period_label),
         "Traffic: {}".format(traffic_value),
     ]
-    quota = quota_text(state, today=today)
+    quota_month = (
+        selected_month if period == "month_history"
+        else period_bounds("last_month", today=today)[0] if period == "last_month"
+        else today.replace(day=1)
+    )
+    quota = quota_text(state, today=today, month_start=quota_month)
     if quota is not None:
         fields.append(quota)
     line = "  ".join(fields)
@@ -634,6 +638,7 @@ def network_status_line(state, period, today=None, custom_from=None, custom_to=N
             "month": "Month",
             "last_month": "Last month",
             "all": "All time",
+            "month_history": period_label,
             "custom": "Custom",
         }
         compact_period = compact_labels.get(period, period_label)
@@ -653,6 +658,7 @@ def preview_network_status_line(period, value_bytes):
         "month": "Month",
         "last_month": "Last month",
         "all": "All time",
+        "month_history": "Monthly history",
         "custom": "Custom",
     }
     amount = format_gigabytes(value_bytes)
