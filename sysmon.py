@@ -374,7 +374,10 @@ def parse_quota_size(value):
     amount = Decimal(match.group(1))
     if not amount.is_finite() or amount <= 0:
         raise ValueError("Quota must be greater than zero")
-    return int(amount * Decimal(1000 ** 4))
+    limit_bytes = int(amount * Decimal(1000 ** 4))
+    if limit_bytes <= 0:
+        raise ValueError("Quota must be at least one byte")
+    return limit_bytes
 
 
 def update_settings(
@@ -962,7 +965,7 @@ def build_parser():
     parser.add_argument("--to-date", help="custom period end date (YYYY-MM-DD)")
     parser.add_argument(
         "--set-limit",
-        metavar="SIZE",
+        metavar="TB",
         help="set outbound traffic quota in decimal Tb, e.g. 0.5, 4.5, or 8",
     )
     parser.add_argument("--clear-limit", action="store_true", help="set the traffic quota to Unlimited")
