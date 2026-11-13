@@ -792,6 +792,17 @@ def safe_addstr(win, y, x, text, max_width):
         pass
 
 
+MONTH_ABBREVIATIONS = (
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+)
+
+
+def month_label(value):
+    """Return a stable English month/year label independent of the server locale."""
+    return "{} {}".format(MONTH_ABBREVIATIONS[value.month - 1], value.year)
+
+
 def selected_period_text(
     period, custom_from=None, custom_to=None, today=None, selected_month=None
 ):
@@ -801,7 +812,7 @@ def selected_period_text(
         )
     if period in ("month", "last_month", "month_history"):
         month_start, _ = period_bounds(period, today=today, selected_month=selected_month)
-        return month_start.strftime("%b %Y")
+        return month_label(month_start)
     return PERIOD_LABELS[period]
 
 
@@ -967,7 +978,7 @@ def main(stdscr, args):
             period_index = -1
             try:
                 update_settings(selected_period=current_period, selected_month=selected_month)
-                hotkey_status = "Monthly history: {}".format(selected_month.strftime("%b %Y"))
+                hotkey_status = "Monthly history: {}".format(month_label(selected_month))
             except (OSError, SysmonError) as exc:
                 hotkey_status = "Cannot save month: {}".format(exc)
             hotkey_status_until = time.monotonic() + 5.0
@@ -987,7 +998,7 @@ def main(stdscr, args):
                 selected_month = target_month
                 try:
                     update_settings(selected_period="month_history", selected_month=selected_month)
-                    hotkey_status = "Month: {}".format(selected_month.strftime("%b %Y"))
+                    hotkey_status = "Month: {}".format(month_label(selected_month))
                 except (OSError, SysmonError) as exc:
                     hotkey_status = "Cannot save month: {}".format(exc)
             hotkey_status_until = time.monotonic() + 5.0
