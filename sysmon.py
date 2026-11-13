@@ -683,8 +683,6 @@ def network_status_line(
             "custom": "Custom",
         }
         compact_period = compact_labels.get(period, period_label)
-        if period_label.endswith("*"):
-            compact_period += "*"
         fields[0] = "Period: {}".format(compact_period)
         line = "  ".join(fields)
     return line
@@ -1024,7 +1022,8 @@ def main(stdscr, args):
                     hotkey_status = "Cannot save period: {}".format(exc)
                     hotkey_status_until = time.monotonic() + 5.0
         elif key in (ord("m"), ord("M")) and args.preview_network is None:
-            selected_month = datetime.date.today().replace(day=1)
+            if current_period == "month_history":
+                selected_month = datetime.date.today().replace(day=1)
             current_period = "month_history"
             period_index = -1
             hotkey_status = None
