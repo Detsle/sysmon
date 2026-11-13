@@ -25,14 +25,15 @@ import psutil
 
 VERSION = "0.2.0-dev"
 BOX_WIDTH = 70
-DEFAULT_PERIODS = ("today", "7d", "30d", "month", "last_month", "all")
+DEFAULT_PERIODS = ("today", "7d", "month", "all")
 SAVED_PERIODS = DEFAULT_PERIODS + ("month_history",)
-NETWORK_BOX_TITLE = " Network (* = partial month) "
+NETWORK_BOX_TITLE = " Network "
+TRAFFIC_COLLECTOR_INTRODUCED_AT = 1794533947  # 2026-11-13 01:39:07 UTC
 PERIOD_LABELS = {
     "today": "Today",
     "7d": "7 days",
     "30d": "30 days",
-    "month": "Month",
+    "month": "1 month",
     "last_month": "Last month",
     "all": "All time",
     "month_history": "Monthly history",
@@ -191,9 +192,11 @@ def detect_interface(counters):
 
 
 def empty_state():
+    created_at = int(time.time())
     return {
         "version": 1,
-        "created_at": int(time.time()),
+        "created_at": created_at,
+        "accounting_started_at": created_at,
         "interface": None,
         "last_counter": None,
         "last_sample": None,
@@ -223,6 +226,18 @@ def load_state():
     if not isinstance(state.get("daily"), dict) or not isinstance(state.get("settings"), dict):
         raise SysmonError("traffic.json has an invalid structure")
     state.setdefault("notes", [])
+    try:
+        created_at = int(state.get("created_at", time.time()))
+        accounting_started_at = state.get("accounting_started_at")
+        if accounting_started_at is None:
+            # Legacy builds before 2026-11-13 had no traffic collector.
+            accounting_started_at = max(created_at, TRAFFIC_COLLECTOR_INTRODUCED_AT)
+        else:
+            accounting_started_at = max(created_at, int(accounting_started_at))
+    except (TypeError, ValueError):
+        raise SysmonError("traffic.json contains invalid collection timestamps")
+    state["created_at"] = created_at
+    state["accounting_started_at"] = accounting_started_at
     state["settings"].setdefault("interface", "auto")
     state["settings"].setdefault("limit_bytes", None)
     # Remove the legacy manually configured quota date; quota periods are calendar months.
@@ -234,15 +249,21 @@ def load_state():
     state["settings"].setdefault("setup_complete", False)
     if not isinstance(state["settings"].get("interface"), str):
         raise SysmonError("traffic.json contains an invalid interface setting")
-    if state["settings"].get("selected_period") not in SAVED_PERIODS:
-        raise SysmonError("traffic.json contains an invalid selected period")
+    selected_period = state["settings"].get("selected_period", "today")
+    if selected_period in ("30d", "last_month") or selected_period not in SAVED_PERIODS:
+        selected_period = "today"
+    state["settings"]["selected_period"] = selected_period
     try:
         limit = state["settings"].get("limit_bytes")
         limit = int(limit) if limit is not None else None
         selected_month = datetime.date.fromisoformat(state["settings"]["selected_month"])
     except (TypeError, ValueError):
         raise SysmonError("traffic.json contains invalid settings")
-    state["settings"]["selected_month"] = selected_month.replace(day=1).isoformat()
+    selected_month = selected_month.replace(day=1)
+    earliest_month = data_start_date(state).replace(day=1)
+    latest_month = datetime.date.today().replace(day=1)
+    selected_month = min(max(selected_month, earliest_month), latest_month)
+    state["settings"]["selected_month"] = selected_month.isoformat()
     if limit is not None and limit <= 0:
         raise SysmonError("traffic.json contains invalid quota settings")
     state["settings"]["limit_bytes"] = limit
@@ -534,14 +555,20 @@ def format_gigabytes(value, binary=False):
     return "{} {}".format(_format_scaled_amount(values[0], precision), unit)
 
 
-def format_gigabyte_pair(first_bytes, second_bytes, binary=False, integer_total=False):
-    """Format two byte counts with one shared unit and a vertical separator."""
+def _format_capacity_amount(value, precision):
+    """Truncate capacity to avoid displaying a total larger than the measured value."""
+    factor = 10 ** precision
+    truncated = math.floor(max(0.0, value) * factor + 1e-7) / float(factor)
+    return "{:.{}f}".format(truncated, precision)
+
+
+def format_gigabyte_pair(first_bytes, second_bytes, binary=False):
+    """Format used and total bytes with one shared unit; capacity is truncated."""
     values, unit, precision = _scaled_gigabyte_values(
         [first_bytes, second_bytes], binary=binary
     )
-    total_precision = 0 if integer_total else precision
     first = "-" if values[0] is None else _format_scaled_amount(values[0], precision)
-    second = "-" if values[1] is None else _format_scaled_amount(values[1], total_precision)
+    second = "-" if values[1] is None else _format_capacity_amount(values[1], precision)
     return "{} | {} {}".format(first, second, unit)
 
 
@@ -558,8 +585,9 @@ def format_quota_pair(used_bytes, limit_bytes):
 
 
 def data_start_date(state):
-    """Return the first calendar day with data collection, based on installation."""
-    return datetime.date.fromtimestamp(int(state.get("created_at", time.time())))
+    """Return the first date supported by the active outbound traffic collector."""
+    timestamp = state.get("accounting_started_at", state.get("created_at", time.time()))
+    return datetime.date.fromtimestamp(int(timestamp))
 
 
 def traffic_for_period(
@@ -610,21 +638,25 @@ def network_status_line(
     period_label = selected_period_text(
         period, custom_from, custom_to, today=today, selected_month=selected_month
     )
-    if period in ("month", "last_month", "month_history"):
-        period_start, _ = period_bounds(period, today=today, selected_month=selected_month)
-        if data_start_date(state) > period_start:
-            period_label += "*"
     if period == "custom":
         period_label = "Custom"
+    if period == "month_history":
+        earliest_month = data_start_date(state).replace(day=1)
+        latest_month = today.replace(day=1)
+        history_month = selected_month or latest_month
+        history_month = min(max(history_month.replace(day=1), earliest_month), latest_month)
+        period_label = month_label(history_month)
+        selected_month = history_month
+        traffic = traffic_for_period(
+            state, period, today=today, custom_from=custom_from, custom_to=custom_to,
+            selected_month=selected_month,
+        )
+        traffic_value = "-" if traffic is None else format_gigabytes(traffic)
     fields = [
         "Period: {}".format(period_label),
         "Traffic: {}".format(traffic_value),
     ]
-    quota_month = (
-        selected_month if period == "month_history"
-        else period_bounds("last_month", today=today)[0] if period == "last_month"
-        else today.replace(day=1)
-    )
+    quota_month = selected_month if period == "month_history" else today.replace(day=1)
     quota = quota_text(state, today=today, month_start=quota_month)
     if quota is not None:
         fields.append(quota)
@@ -634,7 +666,7 @@ def network_status_line(
             "today": "Today",
             "7d": "7 days",
             "30d": "30 days",
-            "month": "Month",
+            "month": "1 month",
             "last_month": "Last month",
             "all": "All time",
             "month_history": period_label,
@@ -654,7 +686,7 @@ def preview_network_status_line(period, value_bytes):
         "today": "Today",
         "7d": "7 days",
         "30d": "30 days",
-        "month": "Month",
+        "month": "1 month",
         "last_month": "Last month",
         "all": "All time",
         "month_history": "Monthly history",
@@ -811,7 +843,7 @@ def selected_period_text(
         return "Custom {} - {}".format(
             custom_from.strftime("%d-%m-%y"), custom_to.strftime("%d-%m-%y")
         )
-    if period in ("month", "last_month", "month_history"):
+    if period in ("last_month", "month_history"):
         month_start, _ = period_bounds(period, today=today, selected_month=selected_month)
         return month_label(month_start)
     return PERIOD_LABELS[period]
@@ -824,33 +856,18 @@ def cpu_status_line(cpu, bar):
     return "Usage: {}{}   Cores: {}".format(percentage, padding, bar)
 
 
-def standard_memory_capacity_bytes(total_bytes):
-    """Use a nominal 2^n GiB tier only when the actual value is close to it."""
-    if total_bytes <= 0:
-        return total_bytes
-    gib = total_bytes / float(1024 ** 3)
-    tiers = (1, 2, 4, 8, 16, 32, 64, 128, 256)
-    nearest_tier = min(tiers, key=lambda tier: abs(gib - tier))
-    if abs(gib - nearest_tier) / nearest_tier <= 0.08:
-        display_gib = nearest_tier
-    else:
-        display_gib = max(1, int(math.floor(gib + 0.5)))
-    return int(display_gib * (1024 ** 3))
-
-
 def memory_status_line(memory_used, memory_total, swap_used, swap_total):
-    """Keep actual used RAM and show a conventional nominal RAM total."""
-    memory_total = standard_memory_capacity_bytes(memory_total)
+    """Show actual RAM and swap totals with one decimal place."""
     return "Used: {}   Swap: {}".format(
-        format_gigabyte_pair(memory_used, memory_total, binary=True, integer_total=True),
-        format_gigabyte_pair(swap_used, swap_total, binary=True, integer_total=True),
+        format_gigabyte_pair(memory_used, memory_total, binary=True),
+        format_gigabyte_pair(swap_used, swap_total, binary=True),
     )
 
 
 def disk_status_line(disk_used, disk_total, read_speed, write_speed):
     """Render disk capacity and I/O speeds using consistent separators."""
     return "Used: {}   IO: {:.1f} Mb/s read | {:.1f} Mb/s write".format(
-        format_gigabyte_pair(disk_used, disk_total, binary=True, integer_total=True),
+        format_gigabyte_pair(disk_used, disk_total, binary=True),
         read_speed,
         write_speed,
     )
@@ -958,7 +975,11 @@ def main(stdscr, args):
             hotkeys_line = "P: period   Q: quit   PREVIEW MODE"
         else:
             hotkey_status = None
-            hotkeys_line = "P: period   M: months   [ ]: browse   L: quota   Q: quit"
+            hotkeys_line = (
+                "P: period   M: current   [ ]: browse   L: quota   Q: quit"
+                if current_period == "month_history"
+                else "P: period   M: months   L: quota   Q: quit"
+            )
         safe_addstr(stdscr, 18, x + 3, hotkeys_line, BOX_WIDTH - 6)
 
         stdscr.noutrefresh()
@@ -971,28 +992,25 @@ def main(stdscr, args):
             period_index = (period_index + 1) % len(periods)
             current_period = periods[period_index]
             if args.preview_network is None:
+                hotkey_status = None
+                hotkey_status_until = 0.0
                 try:
                     update_settings(selected_period=current_period)
-                    hotkey_status = "Period saved: {}".format(PERIOD_LABELS[current_period])
                 except (OSError, SysmonError) as exc:
                     hotkey_status = "Cannot save period: {}".format(exc)
-                hotkey_status_until = time.monotonic() + 5.0
+                    hotkey_status_until = time.monotonic() + 5.0
         elif key in (ord("m"), ord("M")) and args.preview_network is None:
-            if current_period != "month_history":
-                selected_month = datetime.date.today().replace(day=1)
+            selected_month = datetime.date.today().replace(day=1)
             current_period = "month_history"
             period_index = -1
+            hotkey_status = None
+            hotkey_status_until = 0.0
             try:
                 update_settings(selected_period=current_period, selected_month=selected_month)
-                hotkey_status = "Monthly history: {}".format(month_label(selected_month))
             except (OSError, SysmonError) as exc:
                 hotkey_status = "Cannot save month: {}".format(exc)
-            hotkey_status_until = time.monotonic() + 5.0
-        elif key in (ord("["), ord("]")) and args.preview_network is None:
-            if current_period != "month_history":
-                current_period = "month_history"
-                period_index = -1
-                selected_month = datetime.date.today().replace(day=1)
+                hotkey_status_until = time.monotonic() + 5.0
+        elif key in (ord("["), ord("]")) and args.preview_network is None and current_period == "month_history":
             offset = -1 if key == ord("[") else 1
             target_month = shift_calendar_month(selected_month, offset)
             state = load_state()
@@ -1000,14 +1018,16 @@ def main(stdscr, args):
             latest_month = datetime.date.today().replace(day=1)
             if target_month < earliest_month or target_month > latest_month:
                 hotkey_status = "No collected data for that month"
+                hotkey_status_until = time.monotonic() + 5.0
             else:
                 selected_month = target_month
+                hotkey_status = None
+                hotkey_status_until = 0.0
                 try:
                     update_settings(selected_period="month_history", selected_month=selected_month)
-                    hotkey_status = "Month: {}".format(month_label(selected_month))
                 except (OSError, SysmonError) as exc:
                     hotkey_status = "Cannot save month: {}".format(exc)
-            hotkey_status_until = time.monotonic() + 5.0
+                    hotkey_status_until = time.monotonic() + 5.0
         elif key in (ord("l"), ord("L")) and args.preview_network is None:
             hotkey_status = edit_traffic_quota(stdscr)
             hotkey_status_until = time.monotonic() + 5.0
@@ -1034,7 +1054,7 @@ def build_parser():
     parser.add_argument(
         "--reset-setup",
         action="store_true",
-        help="reset first-run date/quota settings without deleting traffic history",
+        help="reset first-run quota settings without deleting traffic history",
     )
     parser.add_argument("--interface", help="set outbound interface name, or 'auto'")
     return parser
