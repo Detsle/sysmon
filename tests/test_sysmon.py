@@ -579,6 +579,14 @@ class FormattingAndPeriodTests(unittest.TestCase):
             16 * gib,
         )
         self.assertEqual(
+            sysmon.standard_memory_capacity_bytes(round(7.5 * gib)),
+            8 * gib,
+        )
+        self.assertEqual(
+            sysmon.standard_memory_capacity_bytes(12 * gib),
+            12 * gib,
+        )
+        self.assertEqual(
             sysmon.memory_status_line(
                 round(5.36 * gib),
                 round(15.30 * gib),
