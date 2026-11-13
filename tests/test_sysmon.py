@@ -99,7 +99,7 @@ class TrafficTests(unittest.TestCase):
 
     def test_atomic_json_round_trip_and_settings(self):
         self.collect_with(1000)
-        start_date = datetime.date(2026, 11, 1)
+        start_date = datetime.date.fromtimestamp(self.read_state()["created_at"])
         sysmon.update_settings(
             limit_bytes=2_000_000_000,
             set_limit=True,
@@ -108,7 +108,7 @@ class TrafficTests(unittest.TestCase):
         )
         state = self.read_state()
         self.assertEqual(state["settings"]["limit_bytes"], 2_000_000_000)
-        self.assertEqual(state["settings"]["quota_start_date"], "2026-11-01")
+        self.assertEqual(state["settings"]["quota_start_date"], start_date.isoformat())
         self.assertTrue(state["settings"]["setup_complete"])
         self.assertFalse(list(sysmon.DATA_FILE.parent.glob(".traffic.*.tmp")))
 
@@ -122,16 +122,21 @@ class TrafficTests(unittest.TestCase):
         self.collect_with(1000)
         state = self.read_state()
         state["settings"]["limit_bytes"] = 2_000_000_000
-        state["settings"]["quota_start_date"] = "2026-11-10"
+        today = datetime.date.today()
+        start = today - datetime.timedelta(days=3)
+        state["created_at"] = int(datetime.datetime.combine(
+            today - datetime.timedelta(days=10), datetime.time.min
+        ).timestamp())
+        state["settings"]["quota_start_date"] = start.isoformat()
         state["daily"] = {
-            "2026-11-09": 9_000_000_000,
-            "2026-11-10": 250_000_000,
-            "2026-11-12": 500_000_000,
-            "2026-11-13": 250_000_000,
+            (start - datetime.timedelta(days=1)).isoformat(): 9_000_000_000,
+            start.isoformat(): 250_000_000,
+            (today - datetime.timedelta(days=1)).isoformat(): 500_000_000,
+            today.isoformat(): 250_000_000,
         }
         self.assertEqual(
-            sysmon.quota_text(state, today=datetime.date(2026, 11, 13)),
-            "Quota: 1.00 / 2.00 GB (50.0%)",
+            sysmon.quota_text(state, today=today),
+            "Quota: 1.0G / 2.0G",
         )
 
     def test_first_run_setup_defaults_to_today_and_unlimited(self):
@@ -153,14 +158,44 @@ class TrafficTests(unittest.TestCase):
         class FakeTTY:
             def isatty(self):
                 return True
+        future_start = datetime.date.today() + datetime.timedelta(days=5)
         with mock.patch.object(sysmon.sys, "stdin", FakeTTY()), \
              mock.patch.object(sysmon.sys, "stdout", FakeTTY()), \
-             mock.patch("builtins.input", side_effect=["01.11.2026", "2"]):
+             mock.patch("builtins.input", side_effect=[future_start.strftime("%d.%m.%Y"), "2"]):
             sysmon.prompt_first_run_setup()
         state = self.read_state()
-        self.assertEqual(state["settings"]["quota_start_date"], "2026-11-01")
+        self.assertEqual(state["settings"]["quota_start_date"], future_start.isoformat())
         self.assertEqual(state["settings"]["limit_bytes"], 2_000_000_000)
         self.assertTrue(state["settings"]["setup_complete"])
+
+    def test_start_date_cannot_be_earlier_than_installation(self):
+        self.collect_with(1000)
+        installed_at = datetime.date.fromtimestamp(self.read_state()["created_at"])
+        with self.assertRaises(sysmon.SysmonError):
+            sysmon.update_settings(quota_start_date=installed_at - datetime.timedelta(days=1))
+
+    def test_future_start_date_is_allowed_and_displays_dashes(self):
+        self.collect_with(1000)
+        future = datetime.date.today() + datetime.timedelta(days=5)
+        sysmon.update_settings(
+            quota_start_date=future,
+            limit_bytes=2_000_000_000,
+            set_limit=True,
+            setup_complete=True,
+        )
+        state = self.read_state()
+        self.assertIsNone(sysmon.traffic_for_period(state, "today"))
+        self.assertEqual(sysmon.quota_text(state), "Quota: - / 2.0G")
+        self.assertIn("Traffic: -", sysmon.network_status_line(state, "today"))
+
+    def test_unlimited_quota_remains_visible_with_future_start_date(self):
+        self.collect_with(1000)
+        future = datetime.date.today() + datetime.timedelta(days=2)
+        sysmon.update_settings(quota_start_date=future, clear_limit=True)
+        state = self.read_state()
+        line = sysmon.network_status_line(state, "today")
+        self.assertIn("Traffic: -", line)
+        self.assertIn("Quota: Unlimited", line)
 
 
 class FormattingAndPeriodTests(unittest.TestCase):
@@ -197,6 +232,26 @@ class FormattingAndPeriodTests(unittest.TestCase):
         daily = {"2026-11-01": 100, "2026-11-02": 200, "2026-11-03": 300}
         total = sysmon.sum_range(daily, datetime.date(2026, 11, 2), datetime.date(2026, 11, 3))
         self.assertEqual(total, 500)
+
+    def test_traffic_is_formatted_in_decimal_gb_to_one_digit(self):
+        self.assertEqual(sysmon.format_gigabytes(100_000_000), "0.1G")
+        self.assertEqual(sysmon.format_gigabytes(1_250_000_000), "1.2G")
+
+    def test_selected_period_is_clipped_to_tracking_start_date(self):
+        today = datetime.date.today()
+        install = today - datetime.timedelta(days=10)
+        start = today - datetime.timedelta(days=3)
+        daily = {
+            (start - datetime.timedelta(days=1)).isoformat(): 9_000_000_000,
+            start.isoformat(): 100_000_000,
+            today.isoformat(): 200_000_000,
+        }
+        state = {
+            "created_at": int(datetime.datetime.combine(install, datetime.time.min).timestamp()),
+            "settings": {"quota_start_date": start.isoformat(), "limit_bytes": None},
+            "daily": daily,
+        }
+        self.assertEqual(sysmon.traffic_for_period(state, "all", today=today), 300_000_000)
 
 
 if __name__ == "__main__":
