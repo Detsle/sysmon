@@ -398,6 +398,19 @@ def update_settings(
         atomic_save(state)
 
 
+def reset_first_run_setup():
+    """Reset only the first-run quota settings; preserve all collected counters and history."""
+    with StateLock():
+        state = load_state()
+        if state is None:
+            state = empty_state()
+        settings = state["settings"]
+        settings["quota_start_date"] = datetime.date.today().isoformat()
+        settings["limit_bytes"] = None
+        settings["setup_complete"] = False
+        atomic_save(state)
+
+
 def sum_range(daily, start_date, end_date):
     total = 0
     for day_text, amount in daily.items():
@@ -799,6 +812,11 @@ def build_parser():
     parser.add_argument("--set-limit", metavar="SIZE", help="set outbound traffic quota, e.g. 2000GB")
     parser.add_argument("--clear-limit", action="store_true", help="set the traffic quota to Unlimited")
     parser.add_argument("--quota-start-date", metavar="DD.MM.YYYY", help="set the quota calculation start date")
+    parser.add_argument(
+        "--reset-setup",
+        action="store_true",
+        help="reset first-run date/quota settings without deleting traffic history",
+    )
     parser.add_argument("--interface", help="set outbound interface name, or 'auto'")
     return parser
 
@@ -823,6 +841,21 @@ def main_cli():
         parser.error("--set-limit and --clear-limit cannot be used together")
     if args.set_limit and parse_size(args.set_limit) <= 0:
         parser.error("--set-limit must be greater than zero")
+
+    if args.reset_setup:
+        if any((
+            args.collect,
+            args.set_limit is not None,
+            args.clear_limit,
+            args.quota_start_date is not None,
+            args.interface is not None,
+            args.from_date is not None,
+            args.to_date is not None,
+        )):
+            parser.error("--reset-setup cannot be combined with other options")
+        reset_first_run_setup()
+        print("First-run setup reset. Run 'sysmon' to enter the setup again.")
+        return 0
 
     if args.collect:
         result = collect_traffic()
