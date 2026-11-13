@@ -428,8 +428,6 @@ def reset_first_run_setup():
         settings = state["settings"]
         settings.pop("quota_start_date", None)
         settings["limit_bytes"] = None
-        settings["selected_period"] = "today"
-        settings["selected_month"] = datetime.date.today().replace(day=1).isoformat()
         settings["setup_complete"] = False
         atomic_save(state)
 
