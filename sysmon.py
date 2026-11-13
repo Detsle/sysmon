@@ -446,7 +446,27 @@ def sum_range(daily, start_date, end_date):
     return total
 
 
-def period_bounds(period, today=None, custom_from=None, custom_to=None):
+def calendar_month_bounds(month_date, today=None):
+    """Return inclusive calendar-month bounds, optionally clipped at today."""
+    start = month_date.replace(day=1)
+    if start.month == 12:
+        next_month = datetime.date(start.year + 1, 1, 1)
+    else:
+        next_month = datetime.date(start.year, start.month + 1, 1)
+    end = next_month - datetime.timedelta(days=1)
+    if today is not None:
+        end = min(end, today)
+    return start, end
+
+
+def shift_calendar_month(month_date, offset):
+    """Move by whole calendar months, including across year boundaries."""
+    month_index = month_date.year * 12 + month_date.month - 1 + offset
+    year, month_zero = divmod(month_index, 12)
+    return datetime.date(year, month_zero + 1, 1)
+
+
+def period_bounds(period, today=None, custom_from=None, custom_to=None, selected_month=None):
     today = today or datetime.date.today()
     if period == "today":
         return today, today
@@ -455,10 +475,11 @@ def period_bounds(period, today=None, custom_from=None, custom_to=None):
     if period == "30d":
         return today - datetime.timedelta(days=29), today
     if period == "month":
-        return today.replace(day=1), today
+        return calendar_month_bounds(today, today=today)
     if period == "last_month":
-        last_day_previous_month = today.replace(day=1) - datetime.timedelta(days=1)
-        return last_day_previous_month.replace(day=1), last_day_previous_month
+        return calendar_month_bounds(shift_calendar_month(today, -1))
+    if period == "month_history":
+        return calendar_month_bounds(selected_month or today, today=today)
     if period == "all":
         return datetime.date.min, today
     if period == "custom" and custom_from and custom_to:
