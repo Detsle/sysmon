@@ -444,8 +444,12 @@ def format_bytes(value):
 
 
 def format_gigabytes(value):
-    """Format decimal GB with one fractional digit, matching Memory and Disk."""
-    return "{:.1f}G".format(max(0, int(value)) / float(1000 ** 3))
+    """Format decimal GB to one digit without displaying non-zero data as zero."""
+    value = max(0, int(value))
+    if 0 < value < 50_000_000:
+        return "<0.1G"
+    tenths = (value + 50_000_000) // 100_000_000
+    return "{:.1f}G".format(tenths / 10.0)
 
 
 def tracking_start_date(state):
