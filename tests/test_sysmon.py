@@ -166,7 +166,7 @@ class TrafficTests(unittest.TestCase):
         }
         self.assertEqual(
             sysmon.quota_text(state, today=today),
-            "Quota: 1.0G / 2.0G",
+            "Quota: 1.0GB/2.0GB",
         )
 
     def test_first_run_setup_defaults_to_today_and_unlimited(self):
@@ -380,7 +380,7 @@ class FormattingAndPeriodTests(unittest.TestCase):
         }
         line = sysmon.network_status_line(state, "30d", today=today)
         self.assertLessEqual(len(line), sysmon.BOX_WIDTH - 6)
-        self.assertIn("Quota: 125.0G / 2000.0G", line)
+        self.assertIn("Quota: 125.0GB/2000.0GB", line)
 
 
 if __name__ == "__main__":
