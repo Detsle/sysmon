@@ -69,7 +69,7 @@ install_python_runtime() {
         Linux:apt-get)
             export DEBIAN_FRONTEND=noninteractive
             apt-get update
-            apt-get install -y python3 python3-venv
+            apt-get install -y python3 python3-venv python3-pip
             ;;
         Linux:dnf) dnf install -y python3 python3-pip ;;
         Linux:yum) yum install -y python3 python3-pip ;;
@@ -78,9 +78,9 @@ install_python_runtime() {
         Linux:zypper) zypper --non-interactive install python3 python3-pip ;;
         Linux:emerge) emerge --ask=n dev-lang/python dev-python/pip ;;
         FreeBSD:pkg) pkg install -y python3 ;;
-        OpenBSD:pkg_add) pkg_add python%3 ;;
-        NetBSD:pkgin) pkgin -y install python311 ;;
-        NetBSD:pkg_add) pkg_add python311 ;;
+        OpenBSD:pkg_add) pkg_add -I python%3 py3-pip ;;
+        NetBSD:pkgin) pkgin -y install python314 py314-pip ;;
+        NetBSD:pkg_add) pkg_add python314 py314-pip ;;
         *)
             fail "Python 3.8+ is missing and no supported package manager was detected for $OS_NAME."
             ;;
@@ -125,7 +125,14 @@ mkdir -p "$INSTALL_DIR"
 if [ ! -x "$INSTALL_DIR/venv/bin/python" ]; then
     if ! "$PYTHON_BIN" -m venv "$INSTALL_DIR/venv" >/dev/null 2>&1; then
         install_python_runtime
-        "$PYTHON_BIN" -m venv "$INSTALL_DIR/venv" || fail "Could not create a virtual environment. Install the OS venv/ensurepip package."
+        PYTHON_BIN=$(find_python) || fail "Python installation completed, but Python 3.8+ was not found."
+        rm -rf "$INSTALL_DIR/venv"
+        if ! "$PYTHON_BIN" -m venv "$INSTALL_DIR/venv" >/dev/null 2>&1; then
+            # Some OS Python builds ship pip as a separate system package and omit ensurepip.
+            # In that case, expose system packages to the venv but keep Sysmon packages isolated.
+            rm -rf "$INSTALL_DIR/venv"
+            "$PYTHON_BIN" -m venv --system-site-packages --without-pip "$INSTALL_DIR/venv" || fail "Could not create a virtual environment. Install the OS venv package."
+        fi
     fi
 else
     "$INSTALL_DIR/venv/bin/python" -m venv --upgrade "$INSTALL_DIR/venv" >/dev/null 2>&1 || :
@@ -138,7 +145,14 @@ say "[3/8] Installing psutil"
 if ! "$VENV_PYTHON" -m pip --version >/dev/null 2>&1; then
     "$VENV_PYTHON" -m ensurepip --upgrade >/dev/null 2>&1 || :
 fi
-"$VENV_PYTHON" -m pip --version >/dev/null 2>&1 || fail "pip is missing from the virtual environment. Install the OS ensurepip/venv package."
+if ! "$VENV_PYTHON" -m pip --version >/dev/null 2>&1; then
+    install_python_runtime
+    PYTHON_BIN=$(find_python) || fail "Python 3.8+ was not found after installing pip."
+    rm -rf "$INSTALL_DIR/venv"
+    "$PYTHON_BIN" -m venv --system-site-packages --without-pip "$INSTALL_DIR/venv" || fail "Could not create a venv that uses the OS-provided pip package."
+    VENV_PYTHON="$INSTALL_DIR/venv/bin/python"
+fi
+"$VENV_PYTHON" -m pip --version >/dev/null 2>&1 || fail "pip is unavailable. Install the OS pip package and rerun the installer."
 if ! "$VENV_PYTHON" -m pip install --disable-pip-version-check --no-input psutil; then
     install_build_dependencies
     "$VENV_PYTHON" -m pip install --disable-pip-version-check --no-input psutil || fail "Could not install psutil. Check network access and Python build dependencies."
