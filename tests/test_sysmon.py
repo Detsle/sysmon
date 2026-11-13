@@ -214,7 +214,7 @@ class TrafficTests(unittest.TestCase):
 
         state = self.read_state()
         self.assertEqual(state["settings"]["limit_bytes"], 8_000_000_000_000)
-        self.assertEqual(sysmon.quota_text(state), "Quota: 0.00 | 8 Tb")
+        self.assertEqual(sysmon.quota_text(state), "Quota: 0.0 Gb | 8 Tb")
 
     def test_first_run_invalid_date_and_quota_use_defaults(self):
         self.collect_with(1000)
@@ -289,7 +289,7 @@ class TrafficTests(unittest.TestCase):
             status = sysmon.edit_traffic_quota(None)
         state = self.read_state()
         self.assertEqual(state["settings"]["limit_bytes"], 4_500_000_000_000)
-        self.assertEqual(sysmon.quota_text(state), "Quota: 0.00 | 4.5 Tb")
+        self.assertEqual(sysmon.quota_text(state), "Quota: 0.0 Gb | 4.5 Tb")
         self.assertEqual(status, "Quota updated")
 
     def test_cli_set_limit_accepts_numeric_tb_only(self):
@@ -382,7 +382,7 @@ class TrafficTests(unittest.TestCase):
         }
         line = sysmon.network_status_line(state, "30d", today=today)
         self.assertLessEqual(len(line), sysmon.BOX_WIDTH - 6)
-        self.assertIn("Quota: 0.13 | 2 Tb", line)
+        self.assertIn("Quota: 125.0 Gb | 2 Tb", line)
 
 
 class FormattingAndPeriodTests(unittest.TestCase):
@@ -501,24 +501,30 @@ class FormattingAndPeriodTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             sysmon.parse_quota_size("invalid")
 
+    def test_quota_usage_below_five_gb_is_visible_in_gb(self):
+        self.assertEqual(
+            sysmon.format_quota_pair(3_200_000_000, 8_000_000_000_000),
+            "3.2 Gb | 8 Tb",
+        )
+
     def test_quota_limit_is_shown_without_trailing_decimal_zeros(self):
         self.assertEqual(
             sysmon.format_quota_pair(0, 8_000_000_000_000),
-            "0.00 | 8 Tb",
+            "0.0 Gb | 8 Tb",
         )
         self.assertEqual(
             sysmon.format_quota_pair(0, 4_500_000_000_000),
-            "0.00 | 4.5 Tb",
+            "0.0 Gb | 4.5 Tb",
         )
         self.assertEqual(
             sysmon.format_quota_pair(0, 500_000_000_000),
-            "0.00 | 0.5 Tb",
+            "0.0 Gb | 0.5 Tb",
         )
 
     def test_tiny_existing_quota_does_not_display_as_zero_tb(self):
         self.assertEqual(
             sysmon.format_quota_pair(0, 2_000_000_000),
-            "0.00 | 0.00 Tb",
+            "0.0 Gb | 0.00 Tb",
         )
 
     def test_format_bytes_uses_requested_mb_gb_tb_casing(self):
