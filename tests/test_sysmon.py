@@ -130,7 +130,7 @@ class TrafficTests(unittest.TestCase):
         state["daily"][today.isoformat()] = 987_654_321
         state["last_counter"] = 123_456_789
         state["interface"] = "eth0"
-        state["settings"]["selected_period"] = "last_month"
+        state["settings"]["selected_period"] = "month_history"
         state["settings"]["selected_month"] = today.replace(day=1).isoformat()
         sysmon.atomic_save(state)
 
@@ -145,7 +145,7 @@ class TrafficTests(unittest.TestCase):
         self.assertEqual(reset["last_counter"], state["last_counter"])
         self.assertEqual(reset["interface"], state["interface"])
         self.assertEqual(reset["created_at"], state["created_at"])
-        self.assertEqual(reset["settings"]["selected_period"], "last_month")
+        self.assertEqual(reset["settings"]["selected_period"], "month_history")
         self.assertEqual(reset["settings"]["selected_month"], today.replace(day=1).isoformat())
 
     def test_selected_period_persists_and_legacy_state_defaults_to_today(self):
@@ -167,7 +167,7 @@ class TrafficTests(unittest.TestCase):
 
     def test_main_cli_restores_saved_month_history_selection(self):
         self.collect_with(1000)
-        selected = datetime.date(2026, 1, 1)
+        selected = datetime.date.today().replace(day=1)
         sysmon.update_settings(
             selected_period="month_history",
             selected_month=selected,
@@ -356,6 +356,44 @@ class TrafficTests(unittest.TestCase):
             datetime.date.today().replace(day=1).isoformat(),
         )
 
+    def test_legacy_state_ignores_pre_collector_history_and_clamps_month_selection(self):
+        self.collect_with(1000)
+        state = self.read_state()
+        old_install = datetime.datetime(2026, 10, 1).timestamp()
+        state["created_at"] = int(old_install)
+        state.pop("accounting_started_at", None)
+        state["daily"] = {
+            "2026-10-15": 50_000_000_000,
+            "2026-11-13": 3_000_000_000,
+        }
+        state["settings"]["selected_period"] = "last_month"
+        state["settings"]["selected_month"] = "2026-10-01"
+        state["settings"]["limit_bytes"] = 8_000_000_000_000
+        sysmon.atomic_save(state)
+
+        migrated = sysmon.load_state()
+        trusted_start = datetime.date.fromtimestamp(sysmon.TRAFFIC_COLLECTOR_INTRODUCED_AT)
+        self.assertEqual(sysmon.data_start_date(migrated), trusted_start)
+        self.assertEqual(migrated["settings"]["selected_period"], "today")
+        self.assertEqual(migrated["settings"]["selected_month"], trusted_start.replace(day=1).isoformat())
+        self.assertEqual(
+            sysmon.quota_text(
+                migrated,
+                today=datetime.date(2026, 11, 13),
+                month_start=datetime.date(2026, 10, 1),
+            ),
+            "Quota: - | 8 Tb",
+        )
+        history_line = sysmon.network_status_line(
+            migrated,
+            "month_history",
+            today=datetime.date(2026, 11, 13),
+            selected_month=datetime.date(2026, 10, 1),
+        )
+        self.assertIn("Period: Nov ’26", history_line)
+        self.assertIn("Traffic: 3.0 Gb", history_line)
+        self.assertNotIn("Oct", history_line)
+
     def test_unlimited_quota_remains_hidden_in_network_line(self):
         self.collect_with(1000)
         state = self.read_state()
@@ -424,7 +462,7 @@ class FormattingAndPeriodTests(unittest.TestCase):
 
     def test_calendar_period_labels_include_month_and_year(self):
         today = datetime.date(2026, 2, 15)
-        self.assertEqual(sysmon.selected_period_text("month", today=today), "Feb ’26")
+        self.assertEqual(sysmon.selected_period_text("month", today=today), "1 month")
         self.assertEqual(sysmon.selected_period_text("last_month", today=today), "Jan ’26")
         self.assertEqual(
             sysmon.selected_period_text(
@@ -433,8 +471,8 @@ class FormattingAndPeriodTests(unittest.TestCase):
             "Dec ’25",
         )
 
-    def test_network_box_title_explains_partial_month_marker(self):
-        self.assertIn("* = partial month", sysmon.NETWORK_BOX_TITLE)
+    def test_network_box_title_has_no_partial_month_marker(self):
+        self.assertEqual(sysmon.NETWORK_BOX_TITLE, " Network ")
 
     def test_calendar_month_periods_respect_month_lengths_and_leap_years(self):
         self.assertEqual(
@@ -501,8 +539,8 @@ class FormattingAndPeriodTests(unittest.TestCase):
             },
         }
         line = sysmon.network_status_line(state, "month", today=today)
-        self.assertIn("Period: Month", line)
-        self.assertNotIn("Period: Month*", line)
+        self.assertIn("Period: 1 month", line)
+        self.assertNotIn("*", line)
         self.assertIn("Traffic: 20.0 Gb", line)
 
     def test_calendar_month_is_partial_only_when_collection_started_mid_month(self):
@@ -521,7 +559,8 @@ class FormattingAndPeriodTests(unittest.TestCase):
             },
         }
         line = sysmon.network_status_line(state, "month", today=today)
-        self.assertIn("Period: Month*", line)
+        self.assertIn("Period: 1 month", line)
+        self.assertNotIn("*", line)
         self.assertIn("Traffic: 3.0 Gb", line)
 
     def test_custom_date_range_is_supported(self):
@@ -573,54 +612,37 @@ class FormattingAndPeriodTests(unittest.TestCase):
                 self.assertIn("Traffic: 100.00 Tb", line)
                 self.assertIn("Quota: 100.00 | 100 Tb", line)
 
-    def test_ram_total_uses_nearest_standard_capacity_tier(self):
-        gib = 1024 ** 3
-        self.assertEqual(
-            sysmon.standard_memory_capacity_bytes(round(15.30 * gib)),
-            16 * gib,
-        )
-        self.assertEqual(
-            sysmon.standard_memory_capacity_bytes(round(7.5 * gib)),
-            8 * gib,
-        )
-        self.assertEqual(
-            sysmon.standard_memory_capacity_bytes(12 * gib),
-            12 * gib,
-        )
-        self.assertEqual(
-            sysmon.memory_status_line(
-                round(5.36 * gib),
-                round(15.30 * gib),
-                0,
-                4 * gib,
-            ),
-            "Used: 5.4 | 16 Gb   Swap: 0.0 | 4 Gb",
-        )
-
-    def test_memory_and_disk_totals_are_rounded_to_integers(self):
+    def test_memory_and_disk_capacity_totals_show_one_decimal_without_overstatement(self):
         gib = 1024 ** 3
         memory_line = sysmon.memory_status_line(
-            gib,
-            round(7.8 * gib),
+            round(5.36 * gib),
+            round(15.30 * gib),
             0,
-            8 * gib,
+            4 * gib,
         )
         self.assertEqual(
             memory_line,
-            "Used: 1.0 | 8 Gb   Swap: 0.0 | 8 Gb",
+            "Used: 5.4 | 15.3 Gb   Swap: 0.0 | 4.0 Gb",
         )
 
         disk_line = sysmon.disk_status_line(
-            round(29.4 * gib),
-            round(147.6 * gib),
+            round(105.53 * gib),
+            round(431.49 * gib),
             0.0,
             0.0,
         )
         self.assertEqual(
             disk_line,
-            "Used: 29.4 | 148 Gb   IO: 0.0 Mb/s read | 0.0 Mb/s write",
+            "Used: 105.5 | 431.4 Gb   IO: 0.0 Mb/s read | 0.0 Mb/s write",
         )
         self.assertLessEqual(len(disk_line), sysmon.BOX_WIDTH - 6)
+
+    def test_nonstandard_memory_capacity_is_not_snapped_to_nominal_tier(self):
+        gib = 1024 ** 3
+        self.assertEqual(
+            sysmon.memory_status_line(round(1.0 * gib), round(7.75 * gib), 0, round(3.9 * gib)),
+            "Used: 1.0 | 7.7 Gb   Swap: 0.0 | 3.9 Gb",
+        )
 
     def test_sum_range_uses_inclusive_dates(self):
         daily = {"2026-11-01": 100, "2026-11-02": 200, "2026-11-03": 300}
@@ -707,6 +729,8 @@ class FormattingAndPeriodTests(unittest.TestCase):
 
     def test_standard_period_labels_remain_available(self):
         self.assertEqual(sysmon.selected_period_text("7d"), "7 days")
+        self.assertEqual(sysmon.selected_period_text("month"), "1 month")
+        self.assertEqual(sysmon.DEFAULT_PERIODS, ("today", "7d", "month", "all"))
         self.assertEqual(sysmon.selected_period_text("30d"), "30 days")
         self.assertEqual(sysmon.selected_period_text("all"), "All time")
 
